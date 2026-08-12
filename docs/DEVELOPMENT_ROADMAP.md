@@ -11,7 +11,8 @@
 - 地域制限にGPSは使用しない。利用者が対象地域・施設を選択する方式とする。
 - 内部の識別子、データモデル、責務境界は、全国・他施設種別へ拡張できる形にする。
 - スクレイパー、通知エンジン、会員基盤を分離し、取得元ごとの差異をスクレイパー側へ閉じ込める。
-- 現在稼働しているスクレイピング、GitHub Pages、既存LINE通知を維持しながら段階的に移行する。
+- 現在稼働しているスクレイピングとGitHub Pagesを維持しながら段階的に移行する。Phase 0の既存管理者LINE通知はlegacy notification pathとしてPhase 3の利用者別メール通知が本番で安定するまで維持し、その後は停止・削除する。
+- アカウント権限の正は `public.profiles.account_role` とし、メールアドレス、GitHub username、Auth user metadata、フロントエンドだけの判定に依存しない。`account_role` は会員状態や契約・プランとは独立して管理する。
 - GitHubリポジトリ、Actions Artifact、Pages公開データにメールアドレスなどの個人情報を保存しない。
 - 会員基盤はSupabase Auth/PostgreSQLを正式採用する。認証方式はメールのマジックリンクとし、GitHub Pagesを継続する。認証メールはCloudflare Registrarで管理する `email.tenniscourtwatcher.com` とTokyoリージョンのResend Custom SMTPを使用する。Supabaseの料金枠など、明記した項目は引き続き**要決定**。
 - 未決事項は検証または意思決定を終えるまで「要決定」とし、実装上の前提として固定しない。
@@ -20,10 +21,10 @@
 
 | Phase | 状態 | 到達点 |
 | --- | --- | --- |
-| Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得し、Pages表示と既存LINE通知を行う |
+| Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得し、Pages表示とlegacy管理者LINE通知を行う（Phase 3安定後にLINE経路は廃止予定） |
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページを提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
-| Phase 3 | 計画 | 保存した条件に基づき、利用者別メール通知を行う |
+| Phase 3 | 進行中 | queue foundationとemail delivery workerを実装済み。次はproduction deploymentとcanaryを行う |
 | Phase 4 | 計画 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
@@ -50,6 +51,8 @@
 - 通知済み状態を保持する `data/notification-state.json`
 - GitHub Actionsによるテスト、定期取得、データ更新、Pages配信
 - HTML、PNG、診断JSONのArtifact保存と自動テスト
+
+既存の単一通知先LINE通知はPhase 0を完成させた時点のlegacy notification pathであり、恒久的な管理者専用経路ではない。Phase 3の利用者別メール通知が本番で安定するまでは安全な移行のため変更せず維持し、Phase 3の自動配信の安定確認後に停止・削除する。管理者も一般会員と同じ通知条件、queue、email workerへ移行する。
 
 ### 完了条件
 
@@ -318,7 +321,7 @@ Phase 1全体を運用可能な品質にし、Phase 0へ影響を与えずに公
 - 現在の取得範囲は直近15日間の土日・日本の祝日、8:00〜13:00、60分以上である。範囲外の条件も保存できるが、対象データを取得しないため現時点では一致しない。祝日は実際の日付の曜日で判定する。
 - [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)とUI・RPC・照合エンジン・workflowの静的テストを追加した。
 - Phase 2は完了である。通知条件の保存・管理、1利用者5件の上限、空き候補との照合までを実装済みである。
-- Phase 3の利用者別メール実送信は未実装である。
+- Phase 3.1のqueue foundationとPhase 3.2のemail delivery workerは実装済みである。production deploymentとcanaryは未実施で、automatic enqueue/dispatchは未実装である。
 - リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認する。
 
 ### 完了条件
@@ -348,6 +351,16 @@ Actionsで照合を実行するには、Repository Variable
 ### 目的
 
 新しく検出した空き候補を利用者の通知条件と照合し、該当する利用者へメールで知らせる。
+
+### 現在状況（2026-08-12）
+
+- Phase 3.1: queue foundationは完了した。
+- Phase 3.2: email delivery workerは完了した。
+- Phase 3.3: production deploymentとcanary検証を次に行う。
+- Phase 3.4: automatic enqueue/dispatchを導入し、本番安定確認後にlegacy管理者LINEを停止・削除する。
+- Phase 3.5: Resend webhookとdelivery feedbackを実装する。
+
+管理者も一般会員と同じ通知条件、配信queue、email workerを利用する。管理者専用のメール通知経路は作らない。
 
 ### 成果物
 
@@ -386,14 +399,14 @@ Actionsで照合を実行するには、Repository Variable
 - 会員とLINEユーザーIDの安全な紐づけ、解除、再連携
 - 利用者別LINE配信キューと重複防止
 - ブロック、配信不能、連携解除の反映
-- 既存の単一通知先LINE通知からの移行手順
+- 会員共通LINE通知基盤と、legacy管理者LINE停止後も重複配信を起こさない導入手順
 
 ### 完了条件
 
 - LINE連携操作を行った会員本人にだけLINEユーザーIDを紐づけられる。
 - 条件一致した利用者へ個別に通知し、別利用者の条件や識別子を露出しない。
 - 連携解除・退会・通知停止を以後の配信へ反映できる。
-- 現行LINE通知を移行完了まで維持し、切り替え時に重複配信しない。
+- 管理者を含む全会員が同じLINE notification基盤を利用し、管理者専用LINE経路を再構築しない。
 - LINE Loginを併用するか、Messaging APIのみで連携するかは**要決定**。
 
 ### 対象外
@@ -416,6 +429,16 @@ Actionsで照合を実行するには、Repository Variable
 - 契約状態と機能制限を一元管理する仕組み
 - 特定商取引法等を含む必要表示と問い合わせ運用
 - 売上・解約・転換率の最小メトリクス
+
+### Admin entitlement方針
+
+Phase 5でeffective entitlementを判定するときは、アカウント権限と課金状態を別々の入力として扱う。
+
+- `account_role = admin` はbilling不要でPro相当とする。
+- `account_role = member` かつ有効な有料subscriptionがある場合はProとする。
+- `account_role = member` かつ有効な有料subscriptionがない場合はFreeとする。
+
+`account_role` とsubscription/planは別概念である。adminのPro相当権限を表現するためにsubscription rowを偽造しない。account role変更はUUIDで対象を指定するtrusted server操作に限定する。メールアドレス等のidentity属性からroleを推測せず、将来、運用規模と要件に応じてrole変更監査履歴を追加する。
 
 ### 完了条件
 

@@ -2,7 +2,7 @@
 
 ## 1. 目的と今回の境界
 
-Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引き渡すためのDBキュー基盤を対象とする。利用者別LINE通知はPhase 4で扱う。Phase 0から稼働している既存管理者向けLINE通知は、通知先、状態管理、再試行、workflowを含めて変更しない。
+Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引き渡すためのDBキュー基盤を対象とする。利用者別LINE通知はPhase 4で扱う。このキュー基盤の構築中は、Phase 0から稼働している既存管理者向けLINE通知を通知先、状態管理、再試行、workflowを含めて変更せず、安全なfallbackとして維持する。ただしこれはlegacy notification pathであり、Phase 3の自動メール配信が本番で安定した後に停止・削除する。
 
 今回の最初のPRでは、次だけを実装する。
 
@@ -54,7 +54,7 @@ flowchart LR
     W -.-> P
 ```
 
-実線は今回のDB境界、破線は後続PRの責務を表す。既存LINE経路と利用者別メール経路は分離し、一方の障害や変更を他方へ波及させない。
+実線は今回のDB境界、破線は後続PRの責務を表す。Phase 3の構築・canary中は既存LINE経路と利用者別メール経路を分離し、一方の障害や変更を他方へ波及させない。本番安定後は既存管理者LINE経路を廃止し、管理者も通常の利用者別通知pipelineへ移行する。Phase 4でも管理者専用LINE経路は再構築せず、会員共通LINE notification基盤を使用する。
 
 ## 4. 責務分離
 
@@ -279,6 +279,8 @@ GitHub Actionsへservice role keyや利用者別候補を渡す構成を採用�
 - Phase 0の`data/notification-state.json`、`scripts/scrape.py`、既存管理者向けLINE通知の変更
 - 利用者別LINE通知（Phase 4）
 - Supabase環境へのmigration適用
+
+この対象外指定はキュー基盤PRで既存LINEコードを変更しないという安全境界であり、legacy経路を恒久維持する方針ではない。停止・削除はPhase 3の自動配信が本番で安定した後の移行作業として行う。
 
 ## 16. migration適用前後の確認
 
