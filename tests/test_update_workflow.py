@@ -14,12 +14,16 @@ def load_workflow() -> dict[str, Any]:
     return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
 
 
+def workflow_triggers(workflow: dict[str, Any]) -> dict[str, Any]:
+    return workflow.get("on", workflow.get(True, {}))
+
+
 def commit_step_script(workflow: dict[str, Any]) -> str:
     steps = workflow["jobs"]["update"]["steps"]
     return next(
         step["run"]
         for step in steps
-        if step.get("name") == "Commit changed availability and notification state"
+        if step.get("name") == "Commit changed availability"
     )
 
 
@@ -125,7 +129,7 @@ def test_notification_matching_is_variable_gated_after_scraping() -> None:
 
     assert step["if"] == "vars.ENABLE_NOTIFICATION_MATCHING == 'true'"
     assert step["continue-on-error"] is True
-    assert names.index("Update availability and notification state") < names.index(
+    assert names.index("Update availability") < names.index(
         "Match notification rules"
     )
     assert names.index("Match notification rules") < names.index(
@@ -238,21 +242,69 @@ def test_email_failures_do_not_block_artifact_commit_or_pages_inputs() -> None:
             "Upload run data and reservation page snapshots"
         )
         assert names.index(name) < names.index(
-            "Commit changed availability and notification state"
+            "Commit changed availability"
         )
 
 
-def test_legacy_line_environment_and_scrape_step_remain_present() -> None:
+def test_legacy_administrator_line_inputs_environment_and_state_are_absent() -> None:
     workflow = load_workflow()
     job = workflow["jobs"]["update"]
+    triggers = workflow_triggers(workflow)
+    inputs = triggers["workflow_dispatch"]["inputs"]
+    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    assert job["env"]["LINE_CHANNEL_ACCESS_TOKEN"] == (
-        "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}"
+    assert set(inputs) == {"dry_run"}
+    assert set(job["env"]) == {"DRY_RUN"}
+    for legacy_reference in (
+        "LINE_CHANNEL_ACCESS_TOKEN",
+        "LINE_USER_ID",
+        "ENABLE_LINE_NOTIFICATIONS",
+        "SEND_NOTIFICATION",
+        "TEST_NOTIFICATION",
+        "INITIALIZE_NOTIFICATION_BASELINE",
+        "notification-state.json",
+    ):
+        assert legacy_reference not in workflow_text
+    assert named_step(workflow, "Update availability")["run"] == (
+        "python scripts/scrape.py"
     )
-    assert job["env"]["LINE_USER_ID"] == "${{ secrets.LINE_USER_ID }}"
-    assert "ENABLE_LINE_NOTIFICATIONS == 'true'" in job["env"]["SEND_NOTIFICATION"]
-    assert "TEST_NOTIFICATION" in job["env"]
-    assert "INITIALIZE_NOTIFICATION_BASELINE" in job["env"]
-    assert named_step(workflow, "Update availability and notification state")[
-        "run"
-    ] == "python scripts/scrape.py"
+
+
+def test_schedule_and_scheduled_run_gate_are_maintained() -> None:
+    workflow = load_workflow()
+    triggers = workflow_triggers(workflow)
+
+    assert triggers["schedule"] == [{"cron": "7,37 0-14,22-23 * * *"}]
+    assert workflow["jobs"]["update"]["if"] == (
+        "github.event_name == 'workflow_dispatch' || "
+        "vars.ENABLE_SCHEDULED_RUNS == 'true'"
+    )
+
+
+def test_dry_run_acquires_artifacts_without_commit_push_or_pages_deploy() -> None:
+    workflow = load_workflow()
+    dry_run = workflow_triggers(workflow)["workflow_dispatch"]["inputs"]["dry_run"]
+    execution_step = named_step(workflow, "Determine execution mode")
+    commit_step = named_step(workflow, "Commit changed availability")
+
+    assert dry_run["description"] == (
+        "Acquire data and artifacts without commit, push, or Pages deployment"
+    )
+    assert dry_run["default"] is True
+    assert 'if [[ "${DRY_RUN}" == "true" ]]' in execution_step["run"]
+    assert 'echo "deploy_pages=false"' in execution_step["run"]
+    assert commit_step["if"] == "env.DRY_RUN != 'true'"
+    assert workflow["jobs"]["deploy-pages"]["if"] == (
+        "needs.update.result == 'success' && "
+        "needs.update.outputs.deploy_pages == 'true'"
+    )
+
+
+def test_non_dry_run_commits_only_availability() -> None:
+    script = commit_step_script(load_workflow())
+
+    assert "git diff --quiet -- data/availability.json" in script
+    assert re.findall(r"^\s*git add (.+)$", script, re.MULTILINE) == [
+        "data/availability.json"
+    ]
+    assert "notification-state.json" not in script

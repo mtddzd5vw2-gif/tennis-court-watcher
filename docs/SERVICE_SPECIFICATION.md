@@ -23,7 +23,7 @@ Tennis Court Watcherは、公共施設予約サイトの空き状況を定期的
   - SuMIzeiテニスコート
   - 東開庭球場
 - 現行監視条件: 今日を含む直近15日間の土日祝、8:00〜13:00、連続1時間以上
-- 現行チャネル: GitHub Pages、既存の単一通知先LINE通知、Phase 1認証メール用のResend Custom SMTP
+- 現行チャネル: GitHub Pages、利用者別メール通知、Phase 1認証メール用のResend Custom SMTP
 - 認証メール送信ドメイン: `email.tenniscourtwatcher.com`
 
 初期提供地域は鹿児島市に限定するが、GPSによる閲覧・登録・通知の地域制限は行わない。対象地域と施設は利用者が明示的に選択する。
@@ -296,7 +296,7 @@ GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` 
 
 ## 13. 将来のLINE連携
 
-利用者別LINE通知はPhase 4で提供する。現行の `LINE_CHANNEL_ACCESS_TOKEN` と単一の `LINE_USER_ID` による運用者向け通知は、利用者別通知ではない。
+利用者別LINE通知はPhase 4で提供する。Phase 0の単一通知先によるlegacy運用者向けLINE通知はPhase 3.4.3で退役済みであり、Phase 4では再利用しない。
 
 ### 13.1 連携要件
 
@@ -308,7 +308,7 @@ GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` 
 
 ### 13.2 移行
 
-- Phase 0の既存管理者LINE通知はlegacy notification pathである。Phase 3の利用者別メール通知が本番で安定するまでは独立して継続し、安定確認後に停止・削除する。
+- Phase 0の既存管理者LINE通知はlegacy notification pathとしてPhase 3.4.3で退役した。
 - Phase 4は管理者専用LINE経路を再構築せず、管理者を含む会員共通LINE notification基盤として導入する。
 - 導入日、重複配信防止、監視、ロールバックを定める。
 - LINE Loginを認証に使用するか、Messaging API連携だけに使用するかは**要決定**。
@@ -365,7 +365,7 @@ Phase 1会員・規約テーブルに加え、Phase 2の地域・施設マスタ
 | `facility_types` | `id`, `name`, `is_active`, `sort_order`, `created_at` | 初期値は `tennis-court` |
 | `facilities` | `id`, `region_id`, `facility_type_id`, `name`, `is_active`, `sort_order`, `created_at` | IDは `availability.json.facility_id` と一致 |
 
-Phase 2の初期データは鹿児島市とテニスコート種別、鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場である。予約対象リソース、取得元、取得実行、空き枠のDBモデルは後続の候補であり、今回実装しない。現在の `availability.json` と `notification-state.json` は変更・廃止しない。
+Phase 2の初期データは鹿児島市とテニスコート種別、鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場である。予約対象リソース、取得元、取得実行、空き枠のDBモデルは後続の候補であり、今回実装しない。公開用 `availability.json` は維持し、Phase 0のlegacy notification state fileはPhase 3.4.3で削除した。
 
 Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC、service-role専用 `list_notification_rules_for_matching` RPC、1利用者5件の上限triggerはmigrationとしてリポジトリへ追加している。リポジトリへの追加だけではSupabase環境へ自動適用されないため、適用状況は対象環境ごとのmigration履歴で確認する。上限migrationは、適用前に既に6件以上を持つ利用者がいる場合、利用者IDやメールアドレスを表示せず失敗する。適用済みmigrationは変更せず、修正は新しいmigrationで前方適用する。
 
@@ -500,12 +500,12 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 
 ## 20. 現行機能を維持した移行方針
 
-- `scripts/scrape.py`、`data/availability.json`、`data/notification-state.json`、`index.html`、現在のGitHub ActionsをPhase 0の稼働系として扱う。
+- `scripts/scrape.py`、`data/availability.json`、`index.html`、現在のGitHub Actionsをavailability取得・Pages公開の稼働系として扱う。
 - 会員基盤はPhase 0と独立して追加し、最初からスクレイパーへ認証依存を持ち込まない。
-- Phase 3の構築・canary中に会員機能の障害が起きても、公開Pagesとlegacy管理者LINE通知を継続できる構成にする。
+- Phase 3の構築・canary中も公開Pagesを継続し、Phase 3.4.2で利用者別メールのautomatic scheduled runを確認した。
 - データベース導入後も、Pagesが必要とする公開データの生成を維持する。
-- Phase 2では有効化Variableで照合だけを実行し、集計ログだけで確認する。match詳細の記録、配信キューへの保存、送信の有効化方法はPhase 3で決定する。
-- Phase 3の自動enqueue/dispatchと利用者別メール通知が本番で安定した後、legacy管理者LINE通知を停止・削除し、管理者も通常の利用者通知pipelineへ移行する。
+- 通知条件照合、email enqueue、email dispatchは独立した有効化Variableとcredential境界を持ち、失敗時もavailability取得・Pages公開を継続する。
+- Phase 3.4.3でlegacy管理者LINE通知を停止・削除し、管理者も通常の利用者通知pipelineへ移行した。
 
 ## 21. 全国展開方針
 

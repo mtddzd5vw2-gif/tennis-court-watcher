@@ -11,7 +11,7 @@
 - 地域制限にGPSは使用しない。利用者が対象地域・施設を選択する方式とする。
 - 内部の識別子、データモデル、責務境界は、全国・他施設種別へ拡張できる形にする。
 - スクレイパー、通知エンジン、会員基盤を分離し、取得元ごとの差異をスクレイパー側へ閉じ込める。
-- 現在稼働しているスクレイピングとGitHub Pagesを維持しながら段階的に移行する。Phase 0の既存管理者LINE通知はlegacy notification pathとしてPhase 3の利用者別メール通知が本番で安定するまで維持し、その後は停止・削除する。
+- 現在稼働しているスクレイピング、GitHub Pages、利用者別メール通知を維持しながら段階的に移行する。Phase 0のlegacy管理者LINE通知はPhase 3.4.3で退役済みであり、Phase 4の利用者別LINE通知とは分離して扱う。
 - アカウント権限の正は `public.profiles.account_role` とし、メールアドレス、GitHub username、Auth user metadata、フロントエンドだけの判定に依存しない。`account_role` は会員状態や契約・プランとは独立して管理する。
 - GitHubリポジトリ、Actions Artifact、Pages公開データにメールアドレスなどの個人情報を保存しない。
 - 会員基盤はSupabase Auth/PostgreSQLを正式採用する。認証方式はメールのマジックリンクとし、GitHub Pagesを継続する。認証メールはCloudflare Registrarで管理する `email.tenniscourtwatcher.com` とTokyoリージョンのResend Custom SMTPを使用する。Supabaseの料金枠など、明記した項目は引き続き**要決定**。
@@ -21,10 +21,10 @@
 
 | Phase | 状態 | 到達点 |
 | --- | --- | --- |
-| Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得し、Pages表示とlegacy管理者LINE通知を行う（Phase 3安定後にLINE経路は廃止予定） |
+| Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得してPages表示する。Phase 0で導入したlegacy管理者LINE経路はPhase 3.4.3で退役済み |
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページを提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
-| Phase 3 | 進行中 | queue foundation、delivery worker、production canaryを完了し、automatic enqueue/dispatchを段階導入する |
+| Phase 3 | 進行中 | 利用者別メールのautomatic enqueue/dispatchを本番確認済み。Phase 3.5のdelivery feedbackへ進む |
 | Phase 4 | 計画 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
@@ -46,21 +46,21 @@
 - 直近15日間の土日祝、8:00〜13:00、連続1時間以上を対象とする空き候補データ
 - 取得成功、空き0件、取得エラーを区別する `data/availability.json`
 - GitHub Pagesによる空き候補、取得状態、更新時刻の表示
-- 新規 `slot_id` を検出する差分通知エンジン
-- 鴨池県営・SuMIzeiを対象とした既存の単一通知先LINE通知
-- 通知済み状態を保持する `data/notification-state.json`
+- 新規 `slot_id` を検出する差分通知エンジン（Phase 3.4.3で退役）
+- 鴨池県営・SuMIzeiを対象とした単一通知先LINE通知（Phase 3.4.3で退役）
+- 通知済み状態を保持するstate file（Phase 3.4.3で削除）
 - GitHub Actionsによるテスト、定期取得、データ更新、Pages配信
 - HTML、PNG、診断JSONのArtifact保存と自動テスト
 
-既存の単一通知先LINE通知はPhase 0を完成させた時点のlegacy notification pathであり、恒久的な管理者専用経路ではない。Phase 3の利用者別メール通知が本番で安定するまでは安全な移行のため変更せず維持し、Phase 3の自動配信の安定確認後に停止・削除する。管理者も一般会員と同じ通知条件、queue、email workerへ移行する。
+既存の単一通知先LINE通知はPhase 0を完成させた時点のlegacy notification pathであり、恒久的な管理者専用経路ではなかった。Phase 3.4.2で利用者別メールの自動配信を本番確認した後、Phase 3.4.3で送信コード、workflow設定、baseline state fileを削除した。管理者も一般会員と同じ通知条件、queue、email workerを利用する。
 
 ### 完了条件
 
 - 3施設を認証情報なしで取得できる。
 - 同じ空き枠を重複表示・重複通知しない。
 - 施設単位の取得失敗が他施設の取得を止めない。
-- LINE送信失敗時も最新の空き状況を更新し、次回に通知を再試行できる。
-- dry-run、通知基準化、テスト通知、本番差分通知を分けて実行できる。
+- legacy LINE稼働中は、送信失敗時も最新の空き状況を更新し、次回に通知を再試行できた（Phase 3.4.3で経路退役）。
+- 現在のdry-runはデータ・Artifact取得を行い、commit、push、Pages deployを行わない。
 - GitHub Pagesでスマートフォンから空き候補と取得状態を確認できる。
 - 現行のpytestとGitHub Actionsが成功する。
 
@@ -92,7 +92,7 @@
 - 会員状態を管理するデータモデルと認可ポリシー
 - 個人情報をGitHub管理対象から分離した環境・Secret構成
 - 監査、エラー監視、運用手順の最小セット
-- 既存のスクレイピング、Pages、LINE通知を維持した段階的リリース
+- Phase 1リリース時点で既存のスクレイピング、Pages、legacy LINE通知を維持した段階的リリース
 
 ### 完了条件
 
@@ -102,7 +102,7 @@
 - 規約のバージョンと同意日時を利用者ごとに追跡できる。
 - 他の利用者のプロフィールや同意履歴を読み書きできない。
 - メールアドレス、認証情報、セッション、認証メール内容がGitHubリポジトリ、Pages、公開Artifactへ保存・出力されない。
-- 既存のPhase 0の取得、Pages表示、既存LINE通知が回帰テストを含め継続動作する。
+- Phase 1完了時点でPhase 0の取得、Pages表示、当時のlegacy LINE通知が回帰テストを含め継続動作した。
 - 本番運用に必要な環境変数、バックアップ、障害対応、退会対応の手順が文書化されている。
 
 ### 完了確認（2026-08-06）
@@ -316,12 +316,12 @@ Phase 1全体を運用可能な品質にし、Phase 0へ影響を与えずに公
 - 日別取得が `success` の空き枠と有効な条件を、施設、ISO曜日、任意の日付範囲、実際の時間帯重複で判定する純粋Python照合エンジンを追加した。
 - 同一利用者・同一 `slot_id` を1候補にまとめ、複数の一致条件を決定的にソートした `matched_rules` として保持する。別利用者は別候補とする。
 - active会員の有効かつ完全な条件だけを返す `list_notification_rules_for_matching()` を、`security invoker` のservice-role専用RPCとして追加した。
-- GitHub Actionsは `ENABLE_NOTIFICATION_MATCHING=true` の場合だけスクレイピング後に照合し、service-role keyをそのstepのSecret環境変数だけへ渡す。集計だけのシャドーモードとして照合失敗をwarningに留め、既存の取得・LINE・JSON commit・Pages更新をブロックしない。
+- GitHub Actionsは `ENABLE_NOTIFICATION_MATCHING=true` の場合だけスクレイピング後に照合し、service-role keyをそのstepのSecret環境変数だけへ渡す。照合失敗をwarningに留め、availability取得・JSON commit・Pages更新をブロックしない。
 - match詳細は `data/`、GitHub Pages、公開Artifactへ保存せず、CLIログも集計値だけとする。
 - 現在の取得範囲は直近15日間の土日・日本の祝日、8:00〜13:00、60分以上である。範囲外の条件も保存できるが、対象データを取得しないため現時点では一致しない。祝日は実際の日付の曜日で判定する。
 - [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)とUI・RPC・照合エンジン・workflowの静的テストを追加した。
 - Phase 2は完了である。通知条件の保存・管理、1利用者5件の上限、空き候補との照合までを実装済みである。
-- Phase 3.1のqueue foundation、Phase 3.2のemail delivery worker、Phase 3.3のproduction deploymentとcanary検証は完了した。Phase 3.4のautomatic enqueue/dispatchは段階導入中である。
+- Phase 3.1のqueue foundation、Phase 3.2のemail delivery worker、Phase 3.3のproduction deploymentとcanary検証、Phase 3.4のautomatic enqueue/dispatchとlegacy経路整理は完了した。
 - リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認する。
 
 ### 完了条件
@@ -357,10 +357,10 @@ Actionsで照合を実行するには、Repository Variable
 - Phase 3.1: queue foundationは完了した。
 - Phase 3.2: email delivery workerは完了した。
 - Phase 3.3: production migrationとEdge Function deploymentを完了し、実メールcanaryのaccepted、実メールボックスでの受信、Resend Deliveredを確認した。秘密値、メールアドレス、provider message IDは記録しない。
-- Phase 3.4: automatic enqueue/dispatchを段階導入中である。
-  - Phase 3.4.1: GitHub Actionsから利用者別メール候補をenqueueし、delivery workerを1回dispatchするコードと、default OFFの独立した安全フラグを追加する。
-  - Phase 3.4.2: productionで段階的に有効化し、複数回のscheduled runで安定性を確認する。
-  - Phase 3.4.3: 安定確認後にlegacy管理者LINEを停止・削除する。
+- Phase 3.4: automatic enqueue/dispatchとlegacy経路整理は完了した。
+  - Phase 3.4.1: automation foundation complete。GitHub Actionsから利用者別メール候補をenqueueし、delivery workerを1回dispatchするコードと、default OFFの独立した安全フラグを追加した。
+  - Phase 3.4.2: production staged enablementを完了し、本番scheduled runでautomatic scheduled emailを確認した。
+  - Phase 3.4.3: legacy administrator LINEを退役し、単一通知先送信コードとbaseline state fileを削除した。
 - Phase 3.5: Resend webhookとdelivery feedbackを実装する。
 
 管理者も一般会員と同じ通知条件、配信queue、email workerを利用する。管理者専用のメール通知経路は作らない。
