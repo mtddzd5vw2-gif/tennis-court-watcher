@@ -1,6 +1,6 @@
 # kagoshima-tennis-alert
 
-鹿児島県のテニスコート予約サイトを確認し、直近15日間の土日祝にある8:00〜13:00の空き候補を、GitHub PagesとLINEで知らせるプロジェクトです。
+鹿児島県のテニスコート予約サイトを確認し、直近15日間の土日祝にある8:00〜13:00の空き候補を、GitHub Pagesと利用者別メールで知らせるプロジェクトです。
 
 > [!IMPORTANT]
 > 鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場の空き取得は、いずれも認証不要の実画面に対応済みです。スクレイパーは予約サイトの利用者ID・パスワードを使用・保存せず、自動予約も行いません。会員ログインはこれとは分離したSupabase Authのメールマジックリンクを使用します。
@@ -22,8 +22,6 @@
 - 鴨池県営のVue生成DOMをコート行・時刻ヘッダー・状態セル単位で解析
 - SuMIzeiと東開のP-Kashikan公開フォームを施設設定と対象日で遷移し、共通処理でコート行の状態セルを解析
 - 成功、空き0件、取得エラーを区別して `data/availability.json` に保存
-- 鴨池県営とSuMIzeiで、前回データにない `slot_id` だけをLINE通知
-- 東開庭球場はWeb表示のみで、LINE通知対象外
 - JSONを読み込むスマートフォン向けGitHub Pages画面
 - 施設ごとの取得状態・最終確認時刻と、全体・施設別の空き候補件数を表示
 - 最終更新から60分を超えると更新遅延、120分を超えると更新停止を警告
@@ -37,6 +35,8 @@
 - 有効・停止中を含めて1利用者最大5件とするDB triggerと、件数表示・追加制御UI
 - 正常取得日の空き枠と有効な通知条件を、実際の重複時間で判定する純粋Python照合エンジン
 - active会員の有効な条件だけを返すservice-role専用 `list_notification_rules_for_matching` RPC
+- 利用者・チャネル・`slot_id` 単位で重複を防ぐメール配信queueとdelivery worker
+- GitHub Actionsによる `matching -> enqueue -> dispatch` の定期メール配信
 - 固定版 `supabase-js` v2と、Repository Variablesから生成するブラウザ公開設定
 
 空き状況は候補です。予約前に必ず公式サイトで最新情報を確認してください。
@@ -53,7 +53,7 @@
 
 PKCEのcode verifierはリンクを要求したブラウザ側に保存されるため、マジックリンクは原則としてログイン操作を開始した同じブラウザで開く必要があります。別端末・別ブラウザで開いて認証に失敗した場合は、利用するブラウザでログイン画面から再送してください。
 
-`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Function、利用者別の実通知、LINE連携、課金は未実装で、退会ボタンは準備中のままです。
+`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Function、Phase 4の利用者別LINE連携、課金は未実装で、退会ボタンは準備中のままです。
 
 開発用の現行規約版は `2026-08-04-draft` です。一般公開前に正式な規約本文・版番号・発効日へ更新し、開発用版への同意済み利用者にも正式版への再同意を求めてください。
 
@@ -68,7 +68,7 @@ PKCEのcode verifierはリンクを要求したブラウザ側に保存される
 
 法務ページは暫定案であり、会員登録の一般公開前に運営者表示、問い合わせ窓口、版番号、発効日、保持・削除方針などの内容確認が必要です。詳細と未決事項は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
 
-Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限します。DB triggerが最終的な強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3の実メール・利用者別LINE送信、配信キュー、再試行、通知履歴は未実装です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
+Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限します。DB triggerが最終的な強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4の利用者別LINE通知は将来機能です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 
 照合対象は、日別取得結果が `success` で、枠の `status` が `available` のデータだけです。施設、ISO 8601曜日、任意の日付範囲を確認し、通知条件時間帯と空き時間帯の実際の重複分数が最低連続時間以上なら一致します。同じ利用者の複数条件が同じ `slot_id` へ一致しても利用者・枠の候補は1件にまとめ、別利用者は別候補にします。現在の取得範囲は直近15日間の土日・日本の祝日、8:00〜13:00、60分以上です。平日・時間外・60分未満の条件も保存できますが、該当データを取得しないため現時点では一致しません。祝日は実際の日付の曜日で判定します。
 
@@ -90,7 +90,6 @@ Phase 2は完了です。`supabase/migrations/20260807000000_create_notification
 │   ├── callback.html
 │   └── login.html
 ├── data/availability.json
-├── data/notification-state.json
 ├── docs/
 │   ├── DEVELOPMENT_ROADMAP.md
 │   ├── PHASE1_AUTH_DESIGN.md
@@ -103,6 +102,8 @@ Phase 2は完了です。`supabase/migrations/20260807000000_create_notification
 ├── scripts/
 │   ├── __init__.py
 │   ├── generate_auth_config.py
+│   ├── enqueue_email_notifications.py
+│   ├── dispatch_email_notifications.py
 │   ├── match_notification_rules.py
 │   └── scrape.py
 ├── supabase/migrations/
@@ -116,7 +117,6 @@ Phase 2は完了です。`supabase/migrations/20260807000000_create_notification
 │   ├── fixtures/sumizei_schedule.html
 │   ├── fixtures/toukai_schedule.html
 │   ├── test_auth_foundation.py
-│   ├── test_notifications.py
 │   ├── test_notification_rules_schema.py
 │   ├── test_notification_rules_ui.py
 │   ├── test_notification_rule_matching.py
@@ -181,13 +181,13 @@ SuMIzeiは2026年7月21日、東開は2026年7月24日に、Playwrightで認証�
 
 パーサーはコート行内の `●`、`○`、`〇` だけを空き候補とし、`×`、`-`、`確認中`、予約済み、抽選、メンテナンスなどを除外します。`○` は実属性の時間帯を優先し、`●` は同じ行のセル幅と時間ヘッダーから時間を復元します。凡例は `.SelectCalendar` 外なので解析対象になりません。施設コード、選択日、時間ヘッダー、コート行のいずれかが不整合なら、空き0件ではなく施設単位のエラーにします。
 
-P-Kashikanでは公式画面の時刻境界が内部値やセル幅計算上 `:29` / `:59` になる場合があるため、それぞれ1分進めて `:30` / 次の正時へ補正してから連続枠を結合します。この補正はSuMIzeiと東開だけに適用し、鴨池県営の時刻解析には適用しません。補正前の既存slot_idは同じ施設・日付・コート名・補正後時刻に一致するIDへ通知基準を移行するため、時刻修正だけで再通知しません。
+P-Kashikanでは公式画面の時刻境界が内部値やセル幅計算上 `:29` / `:59` になる場合があるため、それぞれ1分進めて `:30` / 次の正時へ補正してから連続枠を結合します。この補正はSuMIzeiと東開だけに適用し、鴨池県営の時刻解析には適用しません。`slot_id` は補正後の公式表示時刻から生成します。
 
 東開の実画面では、コート名は「Aコート(ナイターあり)」「Bコート(ナイターなし)」「C・Dコート(ナイターあり)」です。時間軸は8時台の最初が8:30〜9:00の30分枠、その後は通常60分枠です。監視境界は共通の8:00〜13:00ですが、東開の実データは営業時間に従って8:30からとなり、結合後60分未満の空きは除外します。同じ表示名が複数の内部コート行に現れるため、連続枠はDOM上の同一行内だけで結合してから重複除去します。
 
 ## 連続枠の扱い
 
-同じ日・同じコートで終了時刻と次の開始時刻が一致する場合は結合します。JSONには結合後の枠だけを保存し、元の細分化された枠は残しません。これにより差分通知とPages表示で同じ空きを重複して扱いません。
+同じ日・同じコートで終了時刻と次の開始時刻が一致する場合は結合します。JSONには結合後の枠だけを保存し、元の細分化された枠は残しません。これにより利用者別通知の照合とPages表示で同じ空きを重複して扱いません。
 
 8:00〜13:00の境界で空き枠を切り詰め、結合後の長さが60分未満の候補は除外します。
 
@@ -219,26 +219,6 @@ P-Kashikanでは公式画面の時刻境界が内部値やセル幅計算上 `:2
 - `selector_pending`: 旧データとの互換用。現在の3施設では生成しない
 
 エラー時も `checked_at` と `reservation_url` を保存します。通常は空の `availability` を保存しますが、P-KashikanがHTTP 403を返した場合は、直前の正常取得データがあれば `status: error` のまま `availability` を保持し、`fallback_from_previous: true` と `last_success_checked_at` を記録します。画面上では取得エラーとして扱い、保持した枠を現在の空き件数には加えません。主な `error_type` は `navigation_timeout`、`navigation_error`、`access_denied`、`facility_not_found`、`date_selection_failed`、`no_schedule_table`、`unexpected_dom` です。
-
-## notification-state.json
-
-`data/availability.json` は最新の取得結果とPages表示用、`data/notification-state.json` はLINE通知済み範囲の比較基準です。役割を分離しているため、LINE APIが失敗しても最新の空き状況は更新できます。
-
-通知状態には次を保存します。
-
-- `schema_version`: 通知状態のスキーマ
-- `initialized`: 初回基準化が完了したか
-- `initialized_facility_ids`: 初回基準化が完了した施設ID
-- `updated_at`: 状態を最後に変更した日時
-- `observed_slot_ids`: 通知比較で既に観測済みとする `slot_id`
-- `observed_slot_scopes`: 施設・日付単位のエラー復旧を誤通知しないための補助情報
-- `last_notification_status`: 直前の基準化・送信・抑止・失敗状態
-
-ファイルがない、壊れている、または `initialized=false` の場合は、現在の空きを基準として保存するだけで通知しません。既存の状態に新しい施設が加わった場合は、その施設の正常取得分だけを初回基準化し、同時に既存施設で見つかった新規空きは通常どおり通知候補にします。リポジトリには3施設の現行枠を基準化済みとして登録してあります。
-
-初期化後は現在値と `observed_slot_ids` の差だけを通知します。消えた枠は通知しません。正常取得後に消えた枠を基準から外し、その枠が後日再出現した場合は新規空きとして通知します。施設取得が `error` の間は、その施設・日付の既存IDを保持し、復旧だけを新規空きと誤認しません。
-
-`observed_slot_ids` はLINE通知対象外の東開庭球場も含め、全施設の観測状態を保持します。東開の新規枠や再出現枠は観測済みとして基準を更新しますが、LINE送信候補には加えません。
 
 ## ローカルセットアップ
 
@@ -323,7 +303,7 @@ python scripts/scrape.py
 
 SuMIzeiと東開は共通のP-Kashikan処理を使用します。公開トップURLと日別表示 `disp_span=0` は共通で、施設設定のコード（`029` / `131`）、施設名、対象日だけを変更します。P-Kashikanに限り、`ja-JP`、`Asia/Tokyo`、Desktop ChromeのUser-Agent、`Accept-Language`、1440×1000 viewport、JavaScript有効の通常ブラウザ設定を使用し、同一実行内ではブラウザセッションを再利用します。`navigator.webdriver`を隠すなどのアクセス制限回避は行いません。
 
-P-KashikanがHTTP 403を返した場合は、その実行内の残りのP-Kashikanアクセスを中止します。SuMIzeiまたは東開の直前の正常データと通知基準は保持し、鴨池県営の取得は継続します。
+P-KashikanがHTTP 403を返した場合は、その実行内の残りのP-Kashikanアクセスを中止します。SuMIzeiまたは東開の直前の正常データはavailabilityのfallbackとして保持し、鴨池県営の取得は継続します。
 
 ### P-Kashikan診断情報
 
@@ -331,79 +311,47 @@ P-KashikanがHTTP 403を返した場合は、その実行内の残りのP-Kashik
 
 Cookie値、Authorization、APIキー、token・secretを含むヘッダー値は `<redacted>` とし、Cookieは名前だけを保存します。403本文では `Access denied`、`Forbidden`、Cloudflare、Akamai、Imperva、Incapsula、Bot、Request ID、IP restriction、rate limitを確認します。
 
-## LINE通知
+## 通知経路
 
-GitHubリポジトリの `Settings` → `Secrets and variables` → `Actions` で次のRepository secretsを登録します。
+本番通知は、利用者の通知条件と `run-output/availability.json` を照合し、`matching -> enqueue -> dispatch` の順で利用者別メールを配信します。重複防止はDB側の利用者・チャネル・`slot_id` 単位で行います。各ステップは独立したRepository Variableで有効化し、enqueueはservice-role credential、dispatchはdelivery worker credentialだけを受け取ります。
 
-| Secret | 用途 |
-| --- | --- |
-| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Messaging APIのチャネルアクセストークン |
-| `LINE_USER_ID` | Push messageの通知先ユーザーID |
+Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。会員とLINEユーザーを紐づける利用者別LINE通知はPhase 4の将来機能として扱います。
 
-Secretsが未設定の場合は通知だけをスキップし、取得とJSON更新は継続します。Secretsの値はログに出力しません。
-
-LINE通知対象は鴨池県営テニスコートとSuMIzeiテニスコートです。東開庭球場は監視・`availability.json`への保存・GitHub Pages表示・エラー時のfallbackを継続しますが、LINE通知対象外です。
-
-通常通知には施設名、日付と日本語曜日、コート名、時間、予約ページURLを含め、同一施設・同一日付をまとめます。[LINE Messaging APIの仕様](https://developers.line.biz/en/reference/messaging-api/#text-message)に合わせ、UTF-16で5000文字以下のテキストへ分割し、1リクエスト最大5メッセージ、超過分は複数リクエストで送ります。HTTPタイムアウトは20秒です。
-
-全リクエストが2xxで完了した場合だけ、通知対象施設の通知比較基準を現在値へ進めます。HTTPエラー、タイムアウト、通信エラー、Secrets不足の場合は `availability.json` を更新したまま、通知対象施設の候補IDを基準へ追加しません。次回実行で同じ候補を再検出できます。通知対象外の東開は送信結果にかかわらず観測済みへ進め、再通知候補として保持しません。レスポンス本文、トークン、ユーザーIDはログへ出しません。
-
-通常実行で `send_notification=false` を明示した場合は、通知を送らず現在値へ基準を進めます。これは通知を再度有効にした際に、抑止期間中の古い空きをまとめて送らないためです。候補を将来再通知したい場合は `send_notification=true` のままSecretsやAPIエラーを解消してください。
-
-`test_notification=true` は「鹿児島テニス空き通知の接続テストです。」という固定文面を1件だけ送ります。実在する空きや通知比較基準は使用しません。
-
-## GitHub Actionsの安全な開始手順
-
-`Actions` → `Update tennis availability` → `Run workflow` から、次の順序で確認します。
-
-1. `dry_run=true`、他はすべて `false` で実行
-2. `reservation-page-snapshots` Artifact内の3施設のHTML・PNG・P-Kashikan診断JSON、`run-output/availability.json`、`run-output/notification-state.json` を確認
-3. `dry_run=false`、`initialize_notification_baseline=true`、他は `false` で基準化
-4. `dry_run=false`、`test_notification=true` で固定テストメッセージを1件送信
-5. `dry_run=false`、`send_notification=true` で実差分通知を確認
-6. Repository Variablesを設定して定期実行を有効化
-
-`dry_run=true` が最優先です。取得とArtifact生成は行いますが、LINE送信、リポジトリ内JSON更新、commit、push、Pagesデプロイは行いません。`test_notification`、`initialize_notification_baseline`、`send_notification` を同時に指定してもdry-run中はすべて抑止されます。
-
-初回基準化では現在枠を `notification-state.json` に保存し、空き通知は送りません。既に基準化済みでも `initialize_notification_baseline=true` を指定すれば、通知なしで現在値へ再基準化できます。
+手動実行の `dry_run=true` では、取得とArtifact生成は行いますが、リポジトリ内データの更新、commit、push、Pagesデプロイ、email enqueue/dispatchは行いません。
 
 ### Actions Variables
-
-`Settings` → `Secrets and variables` → `Actions` → `Variables` で設定します。
 
 | Variable | 用途 |
 | --- | --- |
 | `ENABLE_SCHEDULED_RUNS` | `true` のときだけcron実行を許可 |
-| `ENABLE_LINE_NOTIFICATIONS` | `true` のときだけ定期実行の差分通知を許可 |
-| `ENABLE_NOTIFICATION_MATCHING` | `true` のときだけPhase 2の通知条件照合を実行 |
-| `SUPABASE_URL` | ブラウザ公開用のSupabase Project URL |
+| `ENABLE_NOTIFICATION_MATCHING` | `true` のときだけ通知条件照合を実行 |
+| `ENABLE_USER_EMAIL_ENQUEUE` | `true` のときだけ利用者別メール候補をqueueへ登録 |
+| `ENABLE_USER_EMAIL_DISPATCH` | `true` のときだけemail delivery workerを実行 |
+| `SUPABASE_URL` | Supabase Project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | ブラウザ公開用のpublishable key |
 | `AUTH_CALLBACK_URL` | Supabaseに許可登録した本番callback URL |
 
-有効化フラグが未設定または `true` 以外の場合は安全側に倒します。定期実行自体を開始するには `ENABLE_SCHEDULED_RUNS=true`、定期LINE通知も行うには加えて `ENABLE_LINE_NOTIFICATIONS=true` が必要です。手動実行は `ENABLE_SCHEDULED_RUNS` に関係なく利用できます。Pagesデプロイ時は認証用3変数がすべて必須で、空値なら設定生成を失敗させてデプロイしません。`SUPABASE_URL`、`SUPABASE_PUBLISHABLE_KEY`、`AUTH_CALLBACK_URL` は公開値でありRepository Variablesへ設定します。
-
-通知条件照合を実行する場合だけ、`Settings` → `Secrets and variables` → `Actions` → `Secrets` に `SUPABASE_SERVICE_ROLE_KEY` を登録し、Variable `ENABLE_NOTIFICATION_MATCHING=true` を設定します。service-role keyは照合stepの環境変数だけへ渡され、ジョブ全体、Pagesジョブ、Artifactには渡されません。照合用migrationの適用状況も対象Supabase環境で確認してください。
-
-Phase 2照合は集計だけを行うシャドーモードで、照合stepには `continue-on-error: true` を設定しています。Supabase障害やSecret設定不備はwarningとして確認できますが、既存JSONのcommit、単一宛先LINEの状態更新、Pagesデプロイはブロックしません。
+`SUPABASE_SERVICE_ROLE_KEY` はmatching/enqueue stepだけ、`EMAIL_DELIVERY_WORKER_SECRET` はdispatch stepだけへ渡します。3つの通知stepは `continue-on-error: true` で、失敗してもavailability Artifact・commit・Pages公開を妨げません。
 
 ## GitHub ActionsとPages
 
-cronは `0,30 0-14,22-23 * * *` を維持しています。UTCから換算すると、JST 07:00〜23:30の30分間隔です。ただし `ENABLE_SCHEDULED_RUNS=true` になるまで定期ジョブは実行されません。
+cronは `7,37 0-14,22-23 * * *` です。UTCから換算すると、JST 07:07〜23:37の30分間隔です。ただし `ENABLE_SCHEDULED_RUNS=true` になるまで定期ジョブは実行されません。
 
 Pages画面の「最終更新」は、`availability.json` 全体が生成された `generated_at` を示します。各施設の「最終確認」は、その施設の日別データにある最新の `checked_at` を示すため、施設間や最終更新との間に時刻差が生じることがあります。画面は最終更新から60分超で「更新が遅れています」、120分超で「2時間以上更新されていません」と警告します。取得エラーは別に表示し、取得できた日と空き候補は引き続き表示します。
 
 1. 固定済み依存関係とChromiumをセットアップ
 2. pytestを実行
-3. `scripts/scrape.py` で全施設と通知状態を更新
+3. `scripts/scrape.py` で全施設を取得し、availabilityとスナップショットを更新
 4. `ENABLE_NOTIFICATION_MATCHING=true` の場合だけ、実行時JSONとservice-role専用RPCで通知条件を照合
-5. スナップショット、実行時JSON、`index.html`、Phase 1静的画面と共通assetsを `reservation-page-snapshots` Artifactとして常時保存。match詳細は含めない
-6. dry-runでなければ意味のある2つのJSON変更だけをコミット
-7. 別ジョブがRepository Variablesから `_site/assets/config/auth-config.js` を生成
-8. Pages専用権限で `index.html`、最新JSON、認証画面、法務画面、共通assetsをデプロイ
+5. 各有効化フラグとdry-run gateに従って利用者別メールをenqueue/dispatch
+6. スナップショット、実行時availability、`index.html`、Phase 1静的画面と共通assetsを `reservation-page-snapshots` Artifactとして常時保存。match詳細は含めない
+7. dry-runでなければ意味のある `data/availability.json` の変更だけをコミット
+8. 別ジョブがRepository Variablesから `_site/assets/config/auth-config.js` を生成
+9. Pages専用権限で `index.html`、最新JSON、認証画面、法務画面、共通assetsをデプロイ
 
 取得ジョブだけが `contents: write`、Pagesジョブだけが `pages: write` と `id-token: write` を持ちます。dry-runではcommitとPagesジョブを実行しません。一部施設の取得失敗は日別のエラーとしてJSONへ記録し、他施設の処理を継続します。初回実行前に、GitHubリポジトリの `Settings` → `Pages` でSourceを `GitHub Actions` に設定してください。
 
-`concurrency` はブランチごとの `tennis-availability-${{ github.ref }}`、`cancel-in-progress=false` です。同一ブランチのActions実行は直列化されます。Actions以外から同時にpushされてpush競合が起きた場合は上書きせずジョブを警告付きで失敗させます。Artifactはcommitより先に保存されるため、内容を確認してworkflowを再実行してください。
+`concurrency` は全実行共通の `tennis-availability-writer`、`cancel-in-progress=false` です。availability writerは直列化されます。Actions以外から同時にpushされてpush競合が起きた場合は、最大3回までfetch/rebaseして再試行し、競合を解消できなければ上書きせず失敗します。Artifactはcommitより先に保存されるため、内容を確認してworkflowを再実行できます。
 
 ## 今後の作業
 
@@ -411,7 +359,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 2. GitHub Pagesの本番callback URLをSupabaseのRedirect URLsへ登録し、Repository Variablesを設定する
 3. メールマジックリンク、SMTP、リンク有効期限、レート制限を設定して実環境smoke testを行う
 4. 対象Supabaseのmigration履歴を確認して未適用分を手動適用し、複数の架空ユーザーでRLS、RPC、5件上限、並行作成を実DB検証する
-5. Phase 3で利用者別メール送信、配信キュー、再試行、通知履歴を別実装する
+5. Phase 3.5でResend webhookとdelivery feedbackを実装する
 6. 退会Edge Functionと保持・削除方針を別実装する
 7. 利用規約とプライバシーポリシーの暫定初版を確認し、版番号・発効日・問い合わせ先を確定する
 8. GitHub Actionsの外部ActionをコミットSHAで固定する
@@ -420,7 +368,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示はmigrationと静的フロントエンドへ実装済みです。Phase 2の通知条件データ層、原子的保存RPC、1利用者5件の上限、通知条件UI、空き候補との照合エンジン、service-role専用取得RPCもリポジトリへ実装済みで、Phase 2は完了です。Phase 3の実メール送信と退会処理は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/workerと自動enqueue/dispatchは実装済みです。Phase 3.5のdelivery feedback、退会処理、Phase 4の利用者別LINE通知は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。

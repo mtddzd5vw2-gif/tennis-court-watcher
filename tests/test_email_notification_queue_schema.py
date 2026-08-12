@@ -680,7 +680,7 @@ def test_design_covers_required_phase_three_decisions_and_boundaries() -> None:
         assert expected in design
 
 
-def test_forbidden_phase_zero_files_are_not_modified() -> None:
+def test_public_availability_data_is_not_modified() -> None:
     diff_result = subprocess.run(
         ["git", "diff", "--name-only", "HEAD", "--"],
         cwd=ROOT,
@@ -702,9 +702,6 @@ def test_forbidden_phase_zero_files_are_not_modified() -> None:
             path = path.rsplit(" -> ", 1)[1]
         changed_paths.add(path.strip('"'))
 
-    forbidden = {
-        "data/notification-state.json",
-        "scripts/scrape.py",
-    }
+    forbidden = {"data/availability.json"}
 
     assert changed_paths.isdisjoint(forbidden)

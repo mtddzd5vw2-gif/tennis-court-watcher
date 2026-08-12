@@ -1,5 +1,4 @@
 import json
-import urllib.request
 from datetime import date
 from pathlib import Path
 
@@ -231,48 +230,6 @@ def test_scrape_failure_records_diagnostics() -> None:
     assert result["availability"] == []
 
 
-def test_detect_new_availability_uses_slot_id() -> None:
-    slot = parsed_result()["availability"][0]
-    previous = {"facilities": []}
-    current = {
-        "facilities": [
-            {"dates": [{"availability": [slot]}]},
-        ]
-    }
-
-    assert scrape.detect_new_availability(previous, current) == [slot]
-    assert scrape.detect_new_availability(current, current) == []
-
-
-def test_line_notification_sends_new_slots(monkeypatch) -> None:
-    captured: dict = {}
-
-    class FakeResponse:
-        status = 200
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_: object) -> None:
-            return None
-
-    def fake_urlopen(request: urllib.request.Request, timeout: int):
-        captured["request"] = request
-        captured["timeout"] = timeout
-        return FakeResponse()
-
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    slot = parsed_result()["availability"][0]
-
-    sent = scrape.send_line_notification([slot], token="token", user_id="user")
-
-    payload = json.loads(captured["request"].data.decode("utf-8"))
-    assert sent is True
-    assert captured["timeout"] == 20
-    assert payload["to"] == "user"
-    assert "鴨池県営テニスコート" in payload["messages"][0]["text"]
-
-
 def test_comparable_document_ignores_check_timestamps() -> None:
     previous = {
         "generated_at": "2026-07-20T10:00:00+09:00",
@@ -284,6 +241,41 @@ def test_comparable_document_ignores_check_timestamps() -> None:
     }
 
     assert scrape.comparable_document(previous) == scrape.comparable_document(current)
+
+
+def test_write_availability_outputs_keeps_artifact_and_respects_dry_run(
+    tmp_path: Path,
+) -> None:
+    previous = scrape.empty_document()
+    current = scrape.empty_document()
+    current["generated_at"] = CHECKED_AT
+    current["facilities"] = [{"id": "test", "name": "Test", "dates": []}]
+    data_path = tmp_path / "data" / "availability.json"
+    output_directory = tmp_path / "run-output"
+
+    written = scrape.write_availability_outputs(
+        previous,
+        current,
+        dry_run=True,
+        data_path=data_path,
+        output_directory=output_directory,
+    )
+
+    assert written is False
+    assert not data_path.exists()
+    assert scrape.load_document(output_directory / "availability.json") == current
+    assert not (output_directory / "notification-state.json").exists()
+
+    written = scrape.write_availability_outputs(
+        previous,
+        current,
+        dry_run=False,
+        data_path=data_path,
+        output_directory=output_directory,
+    )
+
+    assert written is True
+    assert scrape.load_document(data_path) == current
 
 
 def test_sumizei_extracts_one_hour_available_slot() -> None:
@@ -531,10 +523,12 @@ def test_configured_facilities_include_both_p_kashikan_facilities() -> None:
         "toukai-tennis",
     }
     assert facilities["sumizei"].p_kashikan_code == "029"
-    assert facilities["sumizei"].notification_enabled is True
     assert facilities["toukai-tennis"].name == "東開庭球場"
     assert facilities["toukai-tennis"].p_kashikan_code == "131"
-    assert facilities["toukai-tennis"].notification_enabled is False
+    assert all(
+        not hasattr(facility, "notification_enabled")
+        for facility in facilities.values()
+    )
 
 
 def test_build_document_integrates_all_three_facilities() -> None:
@@ -556,9 +550,7 @@ def test_build_document_integrates_all_three_facilities() -> None:
         "sumizei",
         "toukai-tennis",
     }
-    assert facilities["kamoike-prefectural"]["notification_enabled"] is True
-    assert facilities["sumizei"]["notification_enabled"] is True
-    assert facilities["toukai-tennis"]["notification_enabled"] is False
+    assert all("notification_enabled" not in facility for facility in facilities.values())
     assert facilities["kamoike-prefectural"]["dates"][0]["status"] == "success"
     assert facilities["sumizei"]["dates"][0]["status"] == "success"
     assert len(facilities["sumizei"]["dates"][0]["availability"]) == 3
@@ -871,43 +863,6 @@ def test_p_kashikan_diagnostic_file_and_log_do_not_expose_secrets(
     ):
         assert secret not in serialized
         assert secret not in emitted
-
-
-def test_diff_notifies_new_slots_but_not_error_recovery() -> None:
-    slot = parsed_sumizei_result()["availability"][0]
-    current = {
-        "facilities": [
-            {
-                "id": "sumizei",
-                "dates": [
-                    {"date": TARGET.date.isoformat(), "status": "success", "availability": [slot]}
-                ],
-            }
-        ]
-    }
-    previous_success = {
-        "facilities": [
-            {
-                "id": "sumizei",
-                "dates": [
-                    {"date": TARGET.date.isoformat(), "status": "success", "availability": []}
-                ],
-            }
-        ]
-    }
-    previous_error = {
-        "facilities": [
-            {
-                "id": "sumizei",
-                "dates": [
-                    {"date": TARGET.date.isoformat(), "status": "error", "availability": []}
-                ],
-            }
-        ]
-    }
-
-    assert scrape.detect_new_availability(previous_success, current) == [slot]
-    assert scrape.detect_new_availability(previous_error, current) == []
 
 
 class PageCaptureFactory:

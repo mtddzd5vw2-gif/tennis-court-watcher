@@ -507,7 +507,9 @@ def test_phase_two_documents_describe_current_progress_and_remaining_scope() -> 
         assert "メール" in document
         assert "自動適用されない" in document
 
-    assert "Phase 3.4のautomatic enqueue/dispatchは段階導入中" in roadmap
+    assert "Phase 3.4.1: automation foundation complete" in roadmap
+    assert "Phase 3.4.2: production staged enablementを完了" in roadmap
+    assert "Phase 3.4.3: legacy administrator LINEを退役" in roadmap
 
 
 def test_save_rpc_is_security_invoker_and_has_no_user_id_argument() -> None:

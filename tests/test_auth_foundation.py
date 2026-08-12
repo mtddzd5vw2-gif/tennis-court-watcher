@@ -846,9 +846,9 @@ def test_pages_workflow_publishes_phase_zero_and_auth_foundation() -> None:
     assert "python scripts/generate_auth_config.py" in workflow
     assert "--output _site/assets/config/auth-config.js" in workflow
     assert "python scripts/scrape.py" in workflow
-    assert "LINE_CHANNEL_ACCESS_TOKEN" in workflow
-    assert "LINE_USER_ID" in workflow
-    assert "data/notification-state.json" in workflow
+    assert "LINE_CHANNEL_ACCESS_TOKEN" not in workflow
+    assert "LINE_USER_ID" not in workflow
+    assert "notification-state.json" not in workflow
 
 
 def test_existing_phase_zero_page_and_public_json_contract_remain() -> None:
@@ -859,7 +859,7 @@ def test_existing_phase_zero_page_and_public_json_contract_remain() -> None:
     assert "id=\"page-utils\"" in index
     assert "data/availability.json" in workflow
     assert (ROOT / "data/availability.json").is_file()
-    assert (ROOT / "data/notification-state.json").is_file()
+    assert not (ROOT / "data/notification-state.json").exists()
 
 
 def test_magic_link_submission_validates_input_prevents_duplicates_and_is_neutral(

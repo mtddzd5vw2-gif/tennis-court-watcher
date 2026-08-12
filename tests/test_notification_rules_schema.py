@@ -352,7 +352,7 @@ def test_existing_migration_content_remains_unchanged() -> None:
     assert hashlib.sha256(save_rpc_bytes).hexdigest() == SAVE_RPC_MIGRATION_HASH
 
 
-def test_phase_zero_data_ui_and_scraper_are_not_modified() -> None:
+def test_public_data_and_ui_are_not_modified() -> None:
     result = subprocess.run(
         ["git", "diff", "--name-only", "HEAD", "--"],
         cwd=ROOT,
@@ -363,9 +363,7 @@ def test_phase_zero_data_ui_and_scraper_are_not_modified() -> None:
     changed_paths = set(result.stdout.splitlines())
     forbidden_exact = {
         "data/availability.json",
-        "data/notification-state.json",
         "index.html",
-        "scripts/scrape.py",
         "assets/js/auth-foundation.js",
     }
 

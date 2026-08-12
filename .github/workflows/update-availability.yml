@@ -4,21 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Acquire data and artifacts without LINE, commit, push, or Pages deployment
+        description: Acquire data and artifacts without commit, push, or Pages deployment
         type: boolean
         default: true
-      send_notification:
-        description: Send notifications for newly observed slots
-        type: boolean
-        default: false
-      test_notification:
-        description: Send exactly one fixed LINE connection-test message
-        type: boolean
-        default: false
-      initialize_notification_baseline:
-        description: Save current slots as the notification baseline without notifying
-        type: boolean
-        default: false
   schedule:
     # JST 07:07〜23:37 の30分おき（GitHub ActionsのcronはUTC）
     - cron: "7,37 0-14,22-23 * * *"
@@ -42,16 +30,7 @@ jobs:
     outputs:
       deploy_pages: ${{ steps.execution-mode.outputs.deploy_pages }}
     env:
-      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
-      SEND_NOTIFICATION: >-
-        ${{ (github.event_name == 'schedule' && vars.ENABLE_LINE_NOTIFICATIONS == 'true') ||
-            (github.event_name == 'workflow_dispatch' && inputs.send_notification) }}
-      TEST_NOTIFICATION: >-
-        ${{ github.event_name == 'workflow_dispatch' && inputs.test_notification || false }}
-      INITIALIZE_NOTIFICATION_BASELINE: >-
-        ${{ github.event_name == 'workflow_dispatch' && inputs.initialize_notification_baseline || false }}
 
     steps:
       - name: Determine execution mode
@@ -81,7 +60,7 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
-      - name: Update availability and notification state
+      - name: Update availability
         run: python scripts/scrape.py
 
       - name: Match notification rules
@@ -125,7 +104,6 @@ jobs:
           path: |
             snapshots
             run-output/availability.json
-            run-output/notification-state.json
             index.html
             auth
             account
@@ -134,16 +112,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Commit changed availability and notification state
+      - name: Commit changed availability
         if: env.DRY_RUN != 'true'
         shell: bash
         run: |
-          if git diff --quiet -- data/availability.json data/notification-state.json; then
-            echo "Availability and notification state are unchanged."
+          if git diff --quiet -- data/availability.json; then
+            echo "Availability is unchanged."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/availability.json data/notification-state.json
+            git add data/availability.json
             git commit -m "data: update tennis availability"
 
             MAX_PUSH_ATTEMPTS=3
