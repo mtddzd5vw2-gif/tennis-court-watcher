@@ -228,7 +228,7 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 
 ## 11. 通知条件
 
-通知条件設定はPhase 2で提供し、実装は完了している。通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI、原子的保存RPC、1利用者5件の上限、純粋Pythonの照合エンジン、service-role専用の条件取得RPCは実装済みである。Phase 2は条件管理と空き候補に対する照合結果の生成までを責務とする。Phase 3の利用者別メール実送信は未実装である。
+通知条件設定はPhase 2で提供し、実装は完了している。通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI、原子的保存RPC、1利用者5件の上限、純粋Pythonの照合エンジン、service-role専用の条件取得RPCは実装済みである。Phase 2は条件管理と空き候補に対する照合結果の生成までを責務とする。Phase 3.1のqueue foundationとPhase 3.2のemail delivery workerは実装済みであり、production deploymentとcanaryは未実施で、automatic enqueue/dispatchは未実装である。
 
 ### 11.1 確定データ構造
 
@@ -270,7 +270,7 @@ GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` 
 
 ## 12. メール通知
 
-利用者別メール通知はPhase 3で提供する予定であり、実送信は未実装である。現行のResendはPhase 1認証メールの送信チャネルである。Phase 3でResendを継続利用するかを含む配信設計はPhase 3の開始時に決定し、Phase 1の認証メールとは目的、テンプレート、配信停止、送信処理を明確に分ける。
+利用者別メール通知はPhase 3で提供する。queue foundationとResendを使用するemail delivery workerは実装済みだが、本番へのdeploymentとcanaryは未実施で、automatic enqueue/dispatchは未実装である。Phase 1の認証メールとはAPI key、目的、テンプレート、配信停止、送信処理を分離する。
 
 ### 12.1 通知内容
 
@@ -308,8 +308,9 @@ GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` 
 
 ### 13.2 移行
 
-- Phase 0の既存LINE通知は、利用者別LINE通知の検証中も独立して継続できるようにする。
-- 切り替え日、既存通知の停止条件、重複配信防止、ロールバックを定める。
+- Phase 0の既存管理者LINE通知はlegacy notification pathである。Phase 3の利用者別メール通知が本番で安定するまでは独立して継続し、安定確認後に停止・削除する。
+- Phase 4は管理者専用LINE経路を再構築せず、管理者を含む会員共通LINE notification基盤として導入する。
+- 導入日、重複配信防止、監視、ロールバックを定める。
 - LINE Loginを認証に使用するか、Messaging API連携だけに使用するかは**要決定**。
 
 ## 14. 無料・有料プラン案
@@ -331,6 +332,14 @@ GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` 
 
 有料化前に、決済事業者、価格、税、返金、解約、支払い失敗、特定商取引法等の表示、無料利用者の既存データの扱いを決定する。
 
+Phase 5のeffective entitlementは次の確定方針で判定する。
+
+- `account_role = admin`: billing不要でPro相当
+- `account_role = member` かつ有効な有料subscriptionあり: Pro
+- `account_role = member` かつ有効な有料subscriptionなし: Free
+
+アカウント権限とsubscription/planは別概念とし、adminの権限を表すためのsubscription rowは作らない。
+
 ## 15. データモデル
 
 Phase 1会員・規約テーブルに加え、Phase 2の地域・施設マスターと通知条件テーブルをmigrationで確定した。配信、通知履歴、課金などPhase 3以降のモデルは引き続き論理モデル案とする。
@@ -340,11 +349,13 @@ Phase 1会員・規約テーブルに加え、Phase 2の地域・施設マスタ
 | エンティティ | 主な項目 | 備考 |
 | --- | --- | --- |
 | `auth.users` | `id`, `email`, `email_confirmed_at`, 認証メタデータ | Supabase Auth採用時。認証基盤が管理 |
-| `profiles` | `id`, `membership_status`, `latest_terms_version`, `latest_terms_accepted_at`, `created_at`, `updated_at` | `auth.users(id)` をcascade参照。メールアドレスを重複保存しない |
+| `profiles` | `id`, `account_role`, `membership_status`, `latest_terms_version`, `latest_terms_accepted_at`, `created_at`, `updated_at` | `auth.users(id)` をcascade参照。メールアドレスを重複保存しない |
 | `legal_document_versions` | `document_type`, `version`, `effective_at`, `is_current`, `created_at` | 同一文書種別のcurrentは部分一意indexで1件 |
 | `terms_acceptances` | `id`, `user_id`, `document_type`, `version`, `accepted_at`, `source` | 追記専用。同一利用者・文書種別・版は一意 |
 
 開発用現行規約版は `2026-08-04-draft` である。一般公開前に正式本文・版番号・発効日へ更新し、正式版への再同意を求める。
+
+`profiles.account_role`（`member` / `admin`）をアカウント権限のauthoritative sourceとする。`membership_status`、subscription、planとは独立した属性であり、メールアドレス、GitHub username、Auth user metadata、フロントエンドだけの判定からadminを推測しない。
 
 ### 15.2 施設・空き
 
@@ -396,12 +407,13 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 - マイページ、通知条件、通知履歴、LINE連携、契約情報は認証必須とする。
 - RLSまたは同等のサーバー側認可により、利用者単位の行アクセスを強制する。
 - 管理用Service Role等はサーバー処理だけで使用し、ブラウザ、Pages、リポジトリへ含めない。
-- 管理者権限の付与、監査、緊急停止方法は**要決定**。
+- 管理者権限の付与・解除は、明示的なAuth user UUIDを受け取るtrusted server専用RPCで行う。role変更監査と緊急停止方法は将来の運用要件に応じて追加する。
 
 ### 16.3 Phase 1・Phase 2 RLS
 
 - Phase 1の3つのpublicテーブルと、Phase 2で追加する6テーブルすべてでRLSを有効にする。
 - `profiles`: `id = auth.uid()` の本人だけがSELECT可能。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
+- `profiles.account_role`: authenticated本人は自分のroleをSELECTできるが変更できない。anonは参照・変更できない。`set_account_role(uuid, account_role)` は `SECURITY DEFINER`、空のsearch path、service-role専用とする。
 - `terms_acceptances`: `user_id = auth.uid()` の本人だけがSELECT可能。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
 - `legal_document_versions`: authenticated利用者はcurrentのtermsだけをSELECT可能。anonにはDB権限を与えない。
 - `accept_current_terms()` はauthenticatedだけがEXECUTEでき、anonとPUBLICから実行権限を剥奪する。
@@ -490,10 +502,10 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 
 - `scripts/scrape.py`、`data/availability.json`、`data/notification-state.json`、`index.html`、現在のGitHub ActionsをPhase 0の稼働系として扱う。
 - 会員基盤はPhase 0と独立して追加し、最初からスクレイパーへ認証依存を持ち込まない。
-- 会員機能の障害時も、公開Pagesと既存LINE通知を継続できる構成にする。
+- Phase 3の構築・canary中に会員機能の障害が起きても、公開Pagesとlegacy管理者LINE通知を継続できる構成にする。
 - データベース導入後も、Pagesが必要とする公開データの生成を維持する。
 - Phase 2では有効化Variableで照合だけを実行し、集計ログだけで確認する。match詳細の記録、配信キューへの保存、送信の有効化方法はPhase 3で決定する。
-- 既存LINE通知を停止するのは、利用者別LINE通知の重複防止、監視、ロールバックを確認した後とする。
+- Phase 3の自動enqueue/dispatchと利用者別メール通知が本番で安定した後、legacy管理者LINE通知を停止・削除し、管理者も通常の利用者通知pipelineへ移行する。
 
 ## 21. 全国展開方針
 
