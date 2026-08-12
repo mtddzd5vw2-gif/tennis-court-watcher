@@ -1,4 +1,5 @@
 name: Update tennis availability
+run-name: Update tennis availability [${{ github.event_name == 'schedule' && 'scheduled-live' || inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]
 
 on:
   workflow_dispatch:
@@ -29,6 +30,7 @@ jobs:
       contents: write
     outputs:
       deploy_pages: ${{ steps.execution-mode.outputs.deploy_pages }}
+      source_sha: ${{ steps.source-revision.outputs.sha }}
     env:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
 
@@ -43,8 +45,27 @@ jobs:
             echo "deploy_pages=true" >> "${GITHUB_OUTPUT}"
           fi
 
+      - name: Determine source ref
+        id: source-ref
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          elif [[ "${DRY_RUN}" == "true" ]]; then
+            echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source-ref.outputs.ref }}
+
+      - name: Record source revision
+        id: source-revision
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -176,6 +197,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.update.outputs.source_sha }}
 
       - name: Download run artifact
         uses: actions/download-artifact@v4
