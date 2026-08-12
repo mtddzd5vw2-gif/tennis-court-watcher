@@ -94,6 +94,29 @@ jobs:
           python scripts/match_notification_rules.py
           --availability run-output/availability.json
 
+      - name: Enqueue user email notifications
+        if: >-
+          vars.ENABLE_NOTIFICATION_MATCHING == 'true' &&
+          vars.ENABLE_USER_EMAIL_ENQUEUE == 'true' &&
+          env.DRY_RUN != 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: >-
+          python scripts/enqueue_email_notifications.py
+          --availability run-output/availability.json
+
+      - name: Dispatch user email notifications
+        if: >-
+          vars.ENABLE_USER_EMAIL_DISPATCH == 'true' &&
+          env.DRY_RUN != 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          EMAIL_DELIVERY_WORKER_SECRET: ${{ secrets.EMAIL_DELIVERY_WORKER_SECRET }}
+        run: python scripts/dispatch_email_notifications.py
+
       - name: Upload run data and reservation page snapshots
         if: always()
         uses: actions/upload-artifact@v4

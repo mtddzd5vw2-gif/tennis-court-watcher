@@ -41,6 +41,14 @@ def matching_step(workflow: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def named_step(workflow: dict[str, Any], name: str) -> dict[str, Any]:
+    return next(
+        step
+        for step in workflow["jobs"]["update"]["steps"]
+        if step.get("name") == name
+    )
+
+
 def test_data_update_concurrency_is_global_and_non_cancelling() -> None:
     workflow = load_workflow()
 
@@ -161,3 +169,90 @@ def test_matching_details_are_not_added_to_artifacts_or_pages() -> None:
     assert "match-result" not in pages_script
     assert "match_candidates" not in artifact_path
     assert "match_candidates" not in pages_script
+
+
+def test_user_email_enqueue_has_exact_flags_and_dry_run_gate() -> None:
+    workflow = load_workflow()
+    step = named_step(workflow, "Enqueue user email notifications")
+
+    assert step["if"] == (
+        "vars.ENABLE_NOTIFICATION_MATCHING == 'true' && "
+        "vars.ENABLE_USER_EMAIL_ENQUEUE == 'true' && "
+        "env.DRY_RUN != 'true'"
+    )
+    assert step["continue-on-error"] is True
+    assert step["env"] == {
+        "SUPABASE_URL": "${{ vars.SUPABASE_URL }}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+    }
+    assert "python scripts/enqueue_email_notifications.py" in step["run"]
+    assert "--availability run-output/availability.json" in step["run"]
+
+
+def test_user_email_dispatch_has_exact_flag_and_independent_dry_run_gate() -> None:
+    workflow = load_workflow()
+    step = named_step(workflow, "Dispatch user email notifications")
+
+    assert step["if"] == (
+        "vars.ENABLE_USER_EMAIL_DISPATCH == 'true' && "
+        "env.DRY_RUN != 'true'"
+    )
+    assert "ENABLE_NOTIFICATION_MATCHING" not in step["if"]
+    assert "ENABLE_USER_EMAIL_ENQUEUE" not in step["if"]
+    assert "steps." not in step["if"]
+    assert step["continue-on-error"] is True
+    assert step["env"] == {
+        "SUPABASE_URL": "${{ vars.SUPABASE_URL }}",
+        "EMAIL_DELIVERY_WORKER_SECRET": (
+            "${{ secrets.EMAIL_DELIVERY_WORKER_SECRET }}"
+        ),
+    }
+    assert step["run"] == "python scripts/dispatch_email_notifications.py"
+
+
+def test_email_credentials_are_separated_by_step() -> None:
+    workflow = load_workflow()
+    matching = matching_step(workflow)
+    enqueue = named_step(workflow, "Enqueue user email notifications")
+    dispatch = named_step(workflow, "Dispatch user email notifications")
+
+    assert "EMAIL_DELIVERY_WORKER_SECRET" not in matching["env"]
+    assert "EMAIL_DELIVERY_WORKER_SECRET" not in enqueue["env"]
+    assert "SUPABASE_SERVICE_ROLE_KEY" not in dispatch["env"]
+    assert "EMAIL_DELIVERY_WORKER_SECRET" not in workflow["jobs"]["update"]["env"]
+    assert "EMAIL_DELIVERY_WORKER_SECRET" not in workflow["jobs"]["deploy-pages"]["env"]
+
+
+def test_email_failures_do_not_block_artifact_commit_or_pages_inputs() -> None:
+    workflow = load_workflow()
+    steps = workflow["jobs"]["update"]["steps"]
+    names = [step.get("name") for step in steps]
+
+    for name in (
+        "Match notification rules",
+        "Enqueue user email notifications",
+        "Dispatch user email notifications",
+    ):
+        assert named_step(workflow, name)["continue-on-error"] is True
+        assert names.index(name) < names.index(
+            "Upload run data and reservation page snapshots"
+        )
+        assert names.index(name) < names.index(
+            "Commit changed availability and notification state"
+        )
+
+
+def test_legacy_line_environment_and_scrape_step_remain_present() -> None:
+    workflow = load_workflow()
+    job = workflow["jobs"]["update"]
+
+    assert job["env"]["LINE_CHANNEL_ACCESS_TOKEN"] == (
+        "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}"
+    )
+    assert job["env"]["LINE_USER_ID"] == "${{ secrets.LINE_USER_ID }}"
+    assert "ENABLE_LINE_NOTIFICATIONS == 'true'" in job["env"]["SEND_NOTIFICATION"]
+    assert "TEST_NOTIFICATION" in job["env"]
+    assert "INITIALIZE_NOTIFICATION_BASELINE" in job["env"]
+    assert named_step(workflow, "Update availability and notification state")[
+        "run"
+    ] == "python scripts/scrape.py"

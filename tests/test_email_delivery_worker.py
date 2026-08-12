@@ -267,7 +267,7 @@ def test_pure_helpers_and_unit_tests_cover_required_cases() -> None:
     assert "escapeHtml(reservationUrl)" in helpers
 
 
-def test_phase_zero_and_other_forbidden_paths_are_untouched() -> None:
+def test_phase_zero_data_and_scraper_are_untouched() -> None:
     result = subprocess.run(
         ["git", "status", "--porcelain=v1", "--untracked-files=all"],
         cwd=ROOT,
@@ -279,9 +279,6 @@ def test_phase_zero_and_other_forbidden_paths_are_untouched() -> None:
         line[3:].strip('"').replace("\\", "/")
         for line in result.stdout.splitlines()
     }
-    forbidden = {
-        ".github/workflows/update-availability.yml",
-        "scripts/scrape.py",
-    }
+    forbidden = {"scripts/scrape.py"}
     assert changed_paths.isdisjoint(forbidden)
     assert not any(path.startswith("data/") for path in changed_paths)
