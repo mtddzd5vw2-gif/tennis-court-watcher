@@ -24,7 +24,7 @@
 | Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得し、Pages表示とlegacy管理者LINE通知を行う（Phase 3安定後にLINE経路は廃止予定） |
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページを提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
-| Phase 3 | 進行中 | queue foundationとemail delivery workerを実装済み。次はproduction deploymentとcanaryを行う |
+| Phase 3 | 進行中 | queue foundation、delivery worker、production canaryを完了し、automatic enqueue/dispatchを段階導入する |
 | Phase 4 | 計画 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
@@ -321,7 +321,7 @@ Phase 1全体を運用可能な品質にし、Phase 0へ影響を与えずに公
 - 現在の取得範囲は直近15日間の土日・日本の祝日、8:00〜13:00、60分以上である。範囲外の条件も保存できるが、対象データを取得しないため現時点では一致しない。祝日は実際の日付の曜日で判定する。
 - [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)とUI・RPC・照合エンジン・workflowの静的テストを追加した。
 - Phase 2は完了である。通知条件の保存・管理、1利用者5件の上限、空き候補との照合までを実装済みである。
-- Phase 3.1のqueue foundationとPhase 3.2のemail delivery workerは実装済みである。production deploymentとcanaryは未実施で、automatic enqueue/dispatchは未実装である。
+- Phase 3.1のqueue foundation、Phase 3.2のemail delivery worker、Phase 3.3のproduction deploymentとcanary検証は完了した。Phase 3.4のautomatic enqueue/dispatchは段階導入中である。
 - リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認する。
 
 ### 完了条件
@@ -356,8 +356,11 @@ Actionsで照合を実行するには、Repository Variable
 
 - Phase 3.1: queue foundationは完了した。
 - Phase 3.2: email delivery workerは完了した。
-- Phase 3.3: production deploymentとcanary検証を次に行う。
-- Phase 3.4: automatic enqueue/dispatchを導入し、本番安定確認後にlegacy管理者LINEを停止・削除する。
+- Phase 3.3: production migrationとEdge Function deploymentを完了し、実メールcanaryのaccepted、実メールボックスでの受信、Resend Deliveredを確認した。秘密値、メールアドレス、provider message IDは記録しない。
+- Phase 3.4: automatic enqueue/dispatchを段階導入中である。
+  - Phase 3.4.1: GitHub Actionsから利用者別メール候補をenqueueし、delivery workerを1回dispatchするコードと、default OFFの独立した安全フラグを追加する。
+  - Phase 3.4.2: productionで段階的に有効化し、複数回のscheduled runで安定性を確認する。
+  - Phase 3.4.3: 安定確認後にlegacy管理者LINEを停止・削除する。
 - Phase 3.5: Resend webhookとdelivery feedbackを実装する。
 
 管理者も一般会員と同じ通知条件、配信queue、email workerを利用する。管理者専用のメール通知経路は作らない。

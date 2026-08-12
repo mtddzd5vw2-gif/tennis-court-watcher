@@ -505,8 +505,9 @@ def test_phase_two_documents_describe_current_progress_and_remaining_scope() -> 
         assert "削除" in document
         assert "Phase 3" in document
         assert "メール" in document
-        assert "未実装" in document
         assert "自動適用されない" in document
+
+    assert "Phase 3.4のautomatic enqueue/dispatchは段階導入中" in roadmap
 
 
 def test_save_rpc_is_security_invoker_and_has_no_user_id_argument() -> None:
