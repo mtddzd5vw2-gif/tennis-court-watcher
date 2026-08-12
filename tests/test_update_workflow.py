@@ -281,6 +281,63 @@ def test_schedule_and_scheduled_run_gate_are_maintained() -> None:
     )
 
 
+def test_run_name_distinguishes_all_execution_modes() -> None:
+    workflow = load_workflow()
+
+    assert workflow["run-name"] == (
+        "Update tennis availability "
+        "[${{ github.event_name == 'schedule' && 'scheduled-live' || "
+        "inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]"
+    )
+
+
+def test_update_checkout_uses_live_branch_head_and_dry_run_event_sha() -> None:
+    workflow = load_workflow()
+    job = workflow["jobs"]["update"]
+    steps = job["steps"]
+    names = [step.get("name") for step in steps]
+    source_ref = named_step(workflow, "Determine source ref")
+    checkout = named_step(workflow, "Check out repository")
+    source_revision = named_step(workflow, "Record source revision")
+
+    assert names.index("Determine source ref") < names.index(
+        "Check out repository"
+    )
+    assert source_ref["run"] == (
+        'if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then\n'
+        '  echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"\n'
+        'elif [[ "${DRY_RUN}" == "true" ]]; then\n'
+        '  echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"\n'
+        "else\n"
+        '  echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"\n'
+        "fi\n"
+    )
+    assert checkout["with"]["ref"] == "${{ steps.source-ref.outputs.ref }}"
+    assert names.index("Check out repository") < names.index(
+        "Record source revision"
+    )
+    assert source_revision["run"] == (
+        'echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"'
+    )
+    assert job["outputs"] == {
+        "deploy_pages": "${{ steps.execution-mode.outputs.deploy_pages }}",
+        "source_sha": "${{ steps.source-revision.outputs.sha }}",
+    }
+
+
+def test_pages_checkout_uses_the_update_source_sha() -> None:
+    workflow = load_workflow()
+    steps = workflow["jobs"]["deploy-pages"]["steps"]
+    checkout = next(
+        step for step in steps if step.get("name") == "Check out repository"
+    )
+
+    assert checkout["uses"] == "actions/checkout@v4"
+    assert checkout["with"] == {
+        "ref": "${{ needs.update.outputs.source_sha }}",
+    }
+
+
 def test_dry_run_acquires_artifacts_without_commit_push_or_pages_deploy() -> None:
     workflow = load_workflow()
     dry_run = workflow_triggers(workflow)["workflow_dispatch"]["inputs"]["dry_run"]
