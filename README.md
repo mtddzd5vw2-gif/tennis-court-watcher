@@ -13,6 +13,7 @@
 - [Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)
 - [Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)
 - [Auth Email Operations](docs/AUTH_EMAIL_OPERATIONS.md)
+- [Phase 3 Scheduler Watchdog](docs/PHASE3_SCHEDULER_WATCHDOG.md)
 
 ## 現在の機能
 
@@ -336,6 +337,8 @@ Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 
 ## GitHub ActionsとPages
 
 cronは `7,37 0-14,22-23 * * *` です。UTCから換算すると、JST 07:07〜23:37の30分間隔です。ただし `ENABLE_SCHEDULED_RUNS=true` になるまで定期ジョブは実行されません。
+
+Phase 3.4.4ではnative scheduleをprimaryのまま維持し、qualifying live runが45分間生成されない場合だけSupabase Edge Functionがfallback dispatchするwatchdogを追加しています。watchdog用Cronはmigrationでは作成せず、`off -> observe 24〜48h -> dispatch` の確認後に手動作成します。設計、secret、Cron SQLは[Phase 3 Scheduler Watchdog](docs/PHASE3_SCHEDULER_WATCHDOG.md)を参照してください。
 
 Pages画面の「最終更新」は、`availability.json` 全体が生成された `generated_at` を示します。各施設の「最終確認」は、その施設の日別データにある最新の `checked_at` を示すため、施設間や最終更新との間に時刻差が生じることがあります。画面は最終更新から60分超で「更新が遅れています」、120分超で「2時間以上更新されていません」と警告します。取得エラーは別に表示し、取得できた日と空き候補は引き続き表示します。
 
