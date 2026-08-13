@@ -361,6 +361,7 @@ Actionsで照合を実行するには、Repository Variable
   - Phase 3.4.1: automation foundation complete。GitHub Actionsから利用者別メール候補をenqueueし、delivery workerを1回dispatchするコードと、default OFFの独立した安全フラグを追加した。
   - Phase 3.4.2: production staged enablementを完了し、本番scheduled runでautomatic scheduled emailを確認した。
   - Phase 3.4.3: legacy administrator LINEを退役し、単一通知先送信コードとbaseline state fileを削除した。
+  - Phase 3.4.4: scheduler reliability hardening。3.4.4aでlive runのsource checkoutをbranch headへ固定し、3.4.4bでGitHub native scheduleをprimaryとしたまま、45分以上qualifying runが生成されない場合だけSupabase DB/Edge Function/Cronからfallback dispatchするwatchdogを実装した。production rolloutは `off -> observe 24〜48h -> dispatch` とし、Cron jobはmigration外で手動作成する。
 - Phase 3.5: Resend webhookとdelivery feedbackを実装する。
 
 管理者も一般会員と同じ通知条件、配信queue、email workerを利用する。管理者専用のメール通知経路は作らない。
