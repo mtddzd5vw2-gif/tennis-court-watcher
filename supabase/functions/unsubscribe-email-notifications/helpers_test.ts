@@ -38,13 +38,13 @@ function makeHandler(options: {
 function formRequest(
   body: URLSearchParams,
   query = "",
-  bearer: string | null = WORKER_SECRET,
+  workerSecretHeader: string | null = WORKER_SECRET,
 ): Request {
   const headers = new Headers({
     "content-type": "application/x-www-form-urlencoded",
   });
-  if (bearer !== null) {
-    headers.set("authorization", `Bearer ${bearer}`);
+  if (workerSecretHeader !== null) {
+    headers.set("x-unsubscribe-worker-secret", workerSecretHeader);
   }
   return new Request(`${ENDPOINT}${query}`, {
     method: "POST",
@@ -85,7 +85,7 @@ test("missing or short configured secret returns 503 before RPC", async () => {
   assert.equal(rpcCalls, 0);
 });
 
-test("missing or invalid bearer returns 401 before body or RPC processing", async () => {
+test("only a valid custom secret header authenticates before body or RPC processing", async () => {
   let rpcCalls = 0;
   const handler = makeHandler({
     unsubscribe: async () => {
@@ -97,9 +97,16 @@ test("missing or invalid bearer returns 401 before body or RPC processing", asyn
 
   const missing = await handler(formRequest(body, "", null));
   const invalid = await handler(formRequest(body, "", "x".repeat(40)));
+  const authorizationOnlyRequest = formRequest(body, "", null);
+  authorizationOnlyRequest.headers.set(
+    "authorization",
+    `Bearer ${WORKER_SECRET}`,
+  );
+  const authorizationOnly = await handler(authorizationOnlyRequest);
 
   assert.equal(missing.status, 401);
   assert.equal(invalid.status, 401);
+  assert.equal(authorizationOnly.status, 401);
   assert.equal(rpcCalls, 0);
 });
 
@@ -227,8 +234,8 @@ test("streaming POST over 2048 bytes is cancelled before unsubscribe", async () 
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${WORKER_SECRET}`,
           "content-type": "application/x-www-form-urlencoded",
+          "x-unsubscribe-worker-secret": WORKER_SECRET,
         },
         body,
         duplex: "half",
@@ -253,8 +260,8 @@ test("invalid UTF-8 POST is rejected before unsubscribe", async () => {
     new Request(ENDPOINT, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${WORKER_SECRET}`,
         "content-type": "application/x-www-form-urlencoded",
+        "x-unsubscribe-worker-secret": WORKER_SECRET,
       },
       body: new Uint8Array([0xc3, 0x28]),
     }),
@@ -282,6 +289,7 @@ test("custom logs contain only aggregate outcomes and interaction", async () => 
       ENDPOINT,
       "?token=",
       "authorization",
+      "x-unsubscribe-worker-secret",
     ]
   ) {
     assert.equal(output.includes(forbidden), false);

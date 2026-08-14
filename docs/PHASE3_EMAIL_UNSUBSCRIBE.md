@@ -10,15 +10,20 @@ production canary前の実測で、Supabase Edge Functionをcapabilityの公開e
 - 架空tokenをqueryへ付けたGETで、Supabase Invocation Logsの`request.url` / `request.search` / `event_message`へtokenを含む値が保存された。
 - したがって、`https://<project>.supabase.co/functions/v1/unsubscribe-email-notifications?token=<token>`という直接公開capability URLはsender rollout前に棄却した。実tokenを含むメールは送信していない。
 
+Cloudflare Workerからbody-only POSTする版のproduction fake token log boundaryでは、token境界は改善したが、service-to-service認証headerに追加blockerが見つかった。
+
+- Supabase Invocation Rawの`request.url`は固定Function URL、`request.search`はなしであり、架空unsubscribe tokenはURL、`event_message`、header metadataに出なかった。このtoken URL leakage境界はPASSした。
+- 一方、`Authorization: Bearer <UNSUBSCRIBE_WORKER_SECRET>`を送ると、Supabase Gatewayが`request.sb.apikey.authorization.prefix`へsecret先頭10文字を保存し、`request.sb.apikey.authorization.error = "invalid"`も保存した。
+- credential fragmentがplatform logに残るためBearer契約を棄却した。修正版は`X-Unsubscribe-Worker-Secret`だけを使い、Workerから`Authorization` headerを送らず、Functionも認証に使用しない。
+
 2026-08-14時点のproduction差分は次のとおりである。
 
 | 対象 | production状態 |
 | --- | --- |
 | Phase 3.5b DB migration | 適用済み |
-| Supabase `unsubscribe-email-notifications` v1 | deploy済み。ただし直接GET/query token版であり、senderからは未使用 |
-| Cloudflare unsubscribe Worker / custom domain | 未deploy |
-| body-only Supabase Function hotfix | 未deploy |
-| `UNSUBSCRIBE_WORKER_SECRET` | Supabase / Cloudflareとも未設定 |
+| Supabase `unsubscribe-email-notifications` | body-only + Bearer版をfake boundary用にdeploy済み。custom header修正版は未deploy |
+| Cloudflare unsubscribe Worker / custom domain | Bearer版をfake boundary用にdeploy済み。custom header修正版は未deploy |
+| `UNSUBSCRIBE_WORKER_SECRET` | 現行値のprefixがplatform logへ保存されたため、修正版deploy時に新規値へrotation必須 |
 | footer / headers / public Worker URL版sender | 未deploy |
 | Account UI / Pages | この実測ではproduction反映を変更していない |
 | `ENABLE_USER_EMAIL_NOTIFICATIONS` | 変更していない |
@@ -32,15 +37,15 @@ email footer / List-Unsubscribe
   -> https://unsubscribe.tenniscourtwatcher.com/u/<opaque-uuid>
   -> Cloudflare Worker
        GET: generic confirmation HTML、DB問い合わせなし、side effectなし
-       POST: tokenをpathから検証し、専用Bearer付きで固定URLへform body転送
+       POST: tokenをpathから検証し、専用custom header付きで固定URLへform body転送
   -> https://<project>.supabase.co/functions/v1/unsubscribe-email-notifications
-       Authorization: Bearer <UNSUBSCRIBE_WORKER_SECRET>
+       X-Unsubscribe-Worker-Secret: <UNSUBSCRIBE_WORKER_SECRET>
        body: interaction=human|one_click&token=<uuid>
   -> service-role-only unsubscribe_email_notifications_by_token(uuid)
   -> notification_email_preferences
 ```
 
-tokenはunsubscribe権限のcapabilityであり、`UNSUBSCRIBE_WORKER_SECRET`はCloudflareを迂回した大量RPC実行を拒否するservice-to-service認証である。同じ32 random bytes以上のheader-safe値をCloudflare secretとSupabase Function secretの両方へ設定する。WorkerへSupabase service-role key、anon key、利用者credentialは置かない。Supabase Function自身だけがplatform-managed `SUPABASE_URL`と`SUPABASE_SERVICE_ROLE_KEY`を使ってservice-role RPCを呼ぶ。
+tokenはunsubscribe権限のcapabilityであり、`UNSUBSCRIBE_WORKER_SECRET`はCloudflareを迂回した大量RPC実行を拒否するservice-to-service認証である。同じ32 random bytes以上のheader-safe値をCloudflare secretとSupabase Function secretの両方へ設定し、`X-Unsubscribe-Worker-Secret`だけで渡す。`Authorization`、URL、bodyには入れない。WorkerへSupabase service-role key、anon key、利用者credentialは置かない。Supabase Function自身だけがplatform-managed `SUPABASE_URL`と`SUPABASE_SERVICE_ROLE_KEY`を使ってservice-role RPCを呼ぶ。
 
 ## 3. DBとcapability契約
 
@@ -83,7 +88,7 @@ https://unsubscribe.tenniscourtwatcher.com/u/<opaque-uuid>
 - `UNSUBSCRIBE_WORKER_SECRET`がUTF-8で32 bytes未満または未設定ならupstreamを呼ばず`503`にする。
 - tokenはpathから検証し、Supabaseの固定Function URLにはquery、path segment、headerとして追加しない。
 - Supabaseへは`interaction=one_click&token=<uuid>`または`interaction=human&token=<uuid>`というform bodyだけを送る。
-- Supabaseへ`Authorization: Bearer <UNSUBSCRIBE_WORKER_SECRET>`を送る。secretをURL、body、response、logへ含めない。
+- Supabaseへ`X-Unsubscribe-Worker-Secret: <UNSUBSCRIBE_WORKER_SECRET>`だけを認証headerとして送る。`Authorization` headerは送らず、secretをURL、body、response、logへ含めない。
 - one-click成功はredirectせず、空bodyの`200`を返す。human成功は日本語success HTMLを返す。
 - malformed、unknown、既にOFF、validで利用者存在を判別できる表示を返さない。
 - Supabase 5xxは成功に見せず5xxで返す。network failureと予期しないupstream statusは`502`とする。upstream redirectは追跡しない。
@@ -107,7 +112,7 @@ https://unsubscribe.tenniscourtwatcher.com/u/<opaque-uuid>
 }
 ```
 
-これによりrequest method/URLを自動保存するWorkers invocation logsを止め、custom domain以外の`workers.dev`とPreview URL入口を無効にする。Worker sourceは`console.log`、`console.error`、`console.warn`を呼ばず、token、secret、Authorization、request URL、path、query、user ID、emailをcustom logsへ出さない。productionではdeploy後にDashboard/API上の実効設定が`invocation_logs=false`、custom domain only、workers.dev disabled、Preview URLs disabledであることを確認し、架空tokenでWorkers Logs、Tail/Logpush、zone security/HTTP logsを含む有効な全log sinkの境界を確認してから実tokenを通す。
+これによりrequest method/URLを自動保存するWorkers invocation logsを止め、custom domain以外の`workers.dev`とPreview URL入口を無効にする。Worker sourceは`console.log`、`console.error`、`console.warn`を呼ばず、token、secret、`X-Unsubscribe-Worker-Secret`の名前・値、Authorization、request URL、path、query、user ID、emailをcustom logsへ出さない。productionではdeploy後にDashboard/API上の実効設定が`invocation_logs=false`、custom domain only、workers.dev disabled、Preview URLs disabledであることを確認し、架空tokenでWorkers Logs、Tail/Logpush、zone security/HTTP logsを含む有効な全log sinkの境界を確認してから実tokenを通す。
 
 `SUPABASE_UNSUBSCRIBE_URL`は手作業で設定せず、`wrangler.jsonc`の`vars`に次のproduction URLを固定し、repository configをsource of truthにする。runtimeもこのhost/pathだけを許可し、別project、credentials、port、query、hashを拒否する。localhostと`127.0.0.1`だけはlocal test用に許可する。
 
@@ -121,12 +126,12 @@ https://oocqyeariwuppkeaeioh.supabase.co/functions/v1/unsubscribe-email-notifica
 
 - GETは`405 Allow: POST`で、存在確認、HTML表示、unsubscribeを一切行わない。
 - `UNSUBSCRIBE_WORKER_SECRET`がUTF-8で32 bytes未満または未設定なら`503`にする。
-- `Authorization: Bearer ...`を読み、SHA-256 digestを使ったconstant-time比較で同一secretを検証する。missing/invalid bearerは`401`とし、bodyを読まずRPCも呼ばない。Originには依存しない。
+- `request.headers.get("x-unsubscribe-worker-secret")`だけを読み、SHA-256 digestを使ったconstant-time比較で同一secretを検証する。missing/invalid custom headerは`401`とし、bodyを読まずRPCも呼ばない。`Authorization` parserやfallbackは持たず、Originには依存しない。
 - query token、`List-Unsubscribe=One-Click`直接body、公開confirmation画面の旧契約を削除する。
 - `application/x-www-form-urlencoded`のbodyに、重複や追加fieldなしで`interaction=human|one_click`と`token=<uuid>`を要求する。
 - UUIDなら既存`unsubscribe_email_notifications_by_token()`を呼び、valid、unknown、replay、既にOFFを同じ空`200`にする。形式不正tokenも同じ空`200`にする。
 - RPC/DB障害は空`502`とし、Workerが5xxとして外部へ返す。
-- custom logはaggregateの`outcome`と`interaction`だけで、request URL、query、token、secret、Authorization、user ID、emailを含めない。
+- custom logはaggregateの`outcome`と`interaction`だけで、request URL、query、token、secret、custom auth headerの名前・値、Authorization、user ID、emailを含めない。
 
 Supabase Invocation Logsには固定Function URLしか渡らないため、`request.url`、`request.search`、`event_message`へcapabilityは載らない。tokenはrequest body内だけに存在する。
 
@@ -187,7 +192,7 @@ git diff --stat
 
 pgTAPはbackfill、自動作成、unique、direct access拒否、RPC privilege、valid/repeated/unknown/manual OFF、provider reason保持、processing/retry_wait中の再有効化拒否と不変性、in-flightなしとpendingのみのrotation、suppression時の拒否を確認する。
 
-Worker testはGET HTML/no-side-effect、human POST、RFC 8058 blank POST、invalid token generic、bounded body、upstream 5xx/no redirect、Bearer送信、secret fail-closed、production upstream pin、custom log不使用、upstream URLへのtoken/secret非混入、body-only tokenを確認する。Supabase Function testはsecret設定、missing/invalid bearer拒否、body tokenのhuman/one_click、query契約削除、GET no-side-effect、generic/idempotent behavior、bounded body、非PII/secret aggregate log、DB 5xxを確認する。sender testはproduction public origin pin、public Worker URL、footer、exact headers、exact serialized JSON fingerprint、retry stabilityを確認する。provider suppression preservationはpgTAPで維持確認する。
+Worker testはGET HTML/no-side-effect、human POST、RFC 8058 blank POST、invalid token generic、bounded body、upstream 5xx/no redirect、custom secret headerのみ送信、Authorization非送信、secret fail-closed、production upstream pin、custom log不使用、upstream URL/bodyへのsecret非混入、body-only tokenを確認する。Supabase Function testはsecret設定、missing/invalid custom header拒否、Authorization非使用、body tokenのhuman/one_click、query契約削除、GET no-side-effect、generic/idempotent behavior、bounded body、非PII/secret aggregate log、DB 5xxを確認する。sender testはproduction public origin pin、public Worker URL、footer、exact headers、exact serialized JSON fingerprint、retry stabilityを確認する。provider suppression preservationはpgTAPで維持確認する。
 
 ## 9. Production rollout前の必須guard
 
@@ -204,15 +209,15 @@ group by status;
 
 ## 10. 人間が行うProduction rollout順
 
-production migrationは適用済みであり、新しいDB migrationはない。既存v1 Functionはsender未使用なので、まずbody-only hotfix Functionを再deployして固定URL POSTを受けられる状態にする。その後は次の順序を崩さない。
+production migrationは適用済みであり、新しいDB migrationはない。Bearer版Function/Workerはfake boundaryまでdeploy済みだがsenderは未使用である。まずcredentialをrotationし、custom header修正版Function/Workerを反映してから、次の順序を崩さない。
 
-**Cloudflare Worker deploy + custom domain + invocation_logs=false確認 → fake token log boundary → maintenance boundary → sender deploy → canary**
+**新secret rotation + Supabase Function deploy + Cloudflare Worker deploy + custom domain + invocation_logs=false確認 → 新しいfake token log boundary → maintenance boundary → sender deploy → canary**
 
-1. 対象Supabase/Cloudflare環境と適用済みmigrationを再確認する。承認済みsecret managerからUTF-8で32 random bytes以上のheader-safeな`UNSUBSCRIBE_WORKER_SECRET`を用意し、同じ値をSupabase Function secretとCloudflare Worker secretへ設定する。secret値をterminal output、docs、chatへ出さない。Cloudflare plaintext `vars`やrepository fileへ入れない。
-2. repository hotfix版`unsubscribe-email-notifications`をdeployする。架空UUIDのbody-only human/one_click POSTは正しいBearerだけが空`200`、missing/invalid bearerは`401`、GETと旧query contractはside effectなしであることを確認する。
+1. 対象Supabase/Cloudflare環境と適用済みmigrationを再確認する。現行`UNSUBSCRIBE_WORKER_SECRET`はprefixがplatform logへ出たcredentialとして廃止し、旧secretを再利用しない。承認済みsecret managerでUTF-8 32 random bytes以上の新しいheader-safe値を生成し、同じ値をSupabase Function secretとCloudflare Worker secretへ協調設定する。secret値をterminal output、docs、chatへ出さない。Cloudflare plaintext `vars`やrepository fileへ入れない。
+2. repository hotfix版`unsubscribe-email-notifications`をdeployする。架空UUIDのbody-only human/one_click POSTは正しい`X-Unsubscribe-Worker-Secret`だけが空`200`、missing/invalid custom headerおよびAuthorization-onlyは`401`、GETと旧query contractはside effectなしであることを確認する。
 3. repositoryの`wrangler.jsonc`をsource of truthとしてWorkerをdeployし、`unsubscribe.tenniscourtwatcher.com` custom domainを関連付ける。service-role credentialは設定しない。
 4. Cloudflare Dashboard/APIで実効設定が`observability.logs.invocation_logs=false`、custom domain only、workers.dev disabled、Preview URLs disabledであることを確認する。source/configの静的値だけで完了扱いにしない。
-5. 架空UUIDだけでGET、human POST、RFC 8058 POSTを実行する。Cloudflareの有効なWorkers Logs、Tail/Logpush、zone security/HTTP logging、およびSupabase Invocation Logs/custom logsを確認し、tokenがCloudflare custom/invocation logsにもSupabase `request.url` / `request.search` / `event_message`にも残らず、Supabase Invocation LogsにAuthorization値が露出していないことも確認する。1か所でも残れば実tokenを通さず中止する。これをfake token log boundaryとする。
+5. 架空UUIDだけでGET、human POST、RFC 8058 POSTを実行する。Cloudflareの有効なWorkers Logs、Tail/Logpush、zone security/HTTP logging、およびSupabase Invocation Logs/custom logsを確認し、tokenがCloudflare custom/invocation logsにもSupabase `request.url` / `request.search` / `event_message`にも残らず、custom header値も保存されていないことを確認する。さらにSupabase Invocation Rawに`request.sb.apikey.authorization.prefix` field自体が出ないことを確認する。1か所でも残れば実tokenを通さず中止する。これを新しいfake token log boundaryとする。
 6. maintenance事前guardで`retry_wait`が0件であることを確認する。0件でなければ通常workerでdrainしてからやり直す。
 7. `ENABLE_USER_EMAIL_NOTIFICATIONS=false`にして新規claimを停止する。
 8. 同じguardを再実行し、`processing`と`retry_wait`がともに0行であることを確認する。
@@ -234,7 +239,7 @@ production migrationは適用済みであり、新しいDB migrationはない。
 - 公開capability URLはメールを閲覧できる者が利用できるため、転送されたメールからも停止できる。tokenを高entropy・unique・非ログとし、再有効化時rotationで旧linkを無効化する。
 - メールsecurity scannerによるGETでは停止しない。RFC 8058の明示的POSTと人間のconfirmation POSTだけにside effectを限定する。
 - `invocation_logs=false`はWorkers invocation logsの設定であり、Cloudflare accountで有効なWAF/zone analytics、Tail、Logpushなど全製品の保存を自動的に証明しない。fake token log boundaryでaccount実設定を確認するまで実tokenは流さない。
-- `UNSUBSCRIBE_WORKER_SECRET`の設定漏れはfail-closedで`503`、不一致は`401`になる。同一値の安全な設定と将来rotationはSupabase/Cloudflareを協調して行う必要がある。
+- `UNSUBSCRIBE_WORKER_SECRET`の設定漏れはfail-closedで`503`、不一致は`401`になる。Bearer版で使用した旧値はprefixがplatform logへ出たため修正版deploy時に必ずrotationし、再利用しない。同一新規値の安全な設定と将来rotationはSupabase/Cloudflareを協調して行う必要がある。
 - 適用済みmigrationの`email_unsubscribe_token_is_valid()`はservice-role-onlyで残るがruntime未使用である。削除には別migrationが必要なため今回のhotfixでは変更しない。
 - provider suppression解除には別途、宛先確認とResend側の運用手順が必要であり、本実装は自動化しない。
 - RFC 8058は両unsubscribe headerが有効なDKIM署名でcoverされることも要求するため、production canaryのraw headerで確認するまで残る運用上の確認事項である。
