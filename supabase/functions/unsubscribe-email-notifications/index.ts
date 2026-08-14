@@ -7,9 +7,7 @@ import {
 async function callRpc(
   supabaseUrl: string,
   serviceRoleKey: string,
-  functionName:
-    | "email_unsubscribe_token_is_valid"
-    | "unsubscribe_email_notifications_by_token",
+  functionName: "unsubscribe_email_notifications_by_token",
   args: UnsubscribeRpcArgs,
 ) {
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -25,13 +23,6 @@ async function callRpc(
 
 const handler = createEmailUnsubscribeHandler({
   getEnv: (name) => Deno.env.get(name),
-  tokenExists: (supabaseUrl, serviceRoleKey, args) =>
-    callRpc(
-      supabaseUrl,
-      serviceRoleKey,
-      "email_unsubscribe_token_is_valid",
-      args,
-    ),
   unsubscribe: (supabaseUrl, serviceRoleKey, args) =>
     callRpc(
       supabaseUrl,

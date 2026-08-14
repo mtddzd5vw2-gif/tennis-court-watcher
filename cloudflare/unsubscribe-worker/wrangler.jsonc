@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tennis-court-watcher-unsubscribe",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-14",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "SUPABASE_UNSUBSCRIBE_URL": "https://oocqyeariwuppkeaeioh.supabase.co/functions/v1/unsubscribe-email-notifications"
+  },
+  "routes": [
+    {
+      "pattern": "unsubscribe.tenniscourtwatcher.com",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    }
+  }
+}

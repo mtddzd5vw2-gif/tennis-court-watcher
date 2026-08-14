@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -20,6 +21,10 @@ CONFIG = ROOT / "supabase/config.toml"
 UI_HTML = ROOT / "account/notifications.html"
 UI_SCRIPT = ROOT / "assets/js/notification-rules.js"
 RUNBOOK = ROOT / "docs/PHASE3_EMAIL_UNSUBSCRIBE.md"
+WORKER_DIR = ROOT / "cloudflare/unsubscribe-worker"
+WORKER_SOURCE = WORKER_DIR / "src/index.ts"
+WORKER_TEST = WORKER_DIR / "src/index_test.ts"
+WORKER_CONFIG = WORKER_DIR / "wrangler.jsonc"
 
 
 def read(path: Path) -> str:
@@ -100,6 +105,11 @@ def test_sender_uses_footer_headers_and_one_exact_serialized_payload() -> None:
     assert '"List-Unsubscribe": `<${safeUnsubscribeUrl}>`' in helpers
     assert '"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"' in helpers
     assert '"get_email_unsubscribe_token_for_message"' in index
+    assert 'Deno.env.get(\n    "EMAIL_UNSUBSCRIBE_PUBLIC_BASE_URL"' in index
+    assert "url.pathname = `/u/${token.toLowerCase()}`" in helpers
+    assert '"https://unsubscribe.tenniscourtwatcher.com"' in helpers
+    assert 'url.hostname === "localhost"' in helpers
+    assert 'url.searchParams.set("token"' not in helpers
     assert "const serializedPayload = JSON.stringify(providerPayload);" in index
     assert "hmacPayloadFingerprint(\n      serializedPayload," in index
     assert "body: serializedPayload" in index
@@ -110,26 +120,90 @@ def test_sender_uses_footer_headers_and_one_exact_serialized_payload() -> None:
         assert f"console.log({forbidden_log}" not in index
 
 
-def test_public_edge_function_supports_confirmation_and_rfc8058_safely() -> None:
+def test_cloudflare_worker_is_the_safe_public_capability_endpoint() -> None:
+    worker = read(WORKER_SOURCE)
+    worker_test = read(WORKER_TEST)
+    config = json.loads(read(WORKER_CONFIG))
+
+    assert config["routes"] == [{
+        "pattern": "unsubscribe.tenniscourtwatcher.com",
+        "custom_domain": True,
+    }]
+    assert config["observability"]["logs"]["invocation_logs"] is False
+    assert config["workers_dev"] is False
+    assert config["preview_urls"] is False
+    assert config["vars"] == {
+        "SUPABASE_UNSUBSCRIBE_URL": (
+            "https://oocqyeariwuppkeaeioh.supabase.co/functions/v1/"
+            "unsubscribe-email-notifications"
+        ),
+    }
+    assert 'const UNSUBSCRIBE_PATH_PATTERN = /^\\/u\\/([^/]+)$/' in worker
+    assert 'request.method === "GET"' in worker
+    assert "confirmationResponse()" in worker
+    assert '"text/html; charset=utf-8"' in worker
+    assert '"cache-control": "no-store"' in worker
+    assert '"referrer-policy": "no-referrer"' in worker
+    assert '"content-security-policy"' in worker
+    assert "request.body.getReader()" in worker
+    assert 'new TextDecoder("utf-8", { fatal: true })' in worker
+    assert "await reader.cancel()" in worker
+    assert 'form.get("List-Unsubscribe") === "One-Click"' in worker
+    assert "body: new URLSearchParams({ interaction, token }).toString()" in worker
+    assert 'authorization: `Bearer ${workerSecret}`' in worker
+    assert "UNSUBSCRIBE_WORKER_SECRET: string" in worker
+    assert "new TextEncoder().encode(value).byteLength" in worker
+    assert '"https://oocqyeariwuppkeaeioh.supabase.co/functions/v1/' in worker
+    assert 'redirect: "manual"' in worker
+    assert 'url.search.length === 0' in worker
+    assert "console." not in worker
+    for forbidden in ("user_id", "userId", "request.url,"):
+        assert forbidden not in worker
+    for behavior in (
+        "GET returns generic Japanese HTML without an upstream side effect",
+        "human POST sends the token only in the upstream form body",
+        "RFC 8058 POST becomes body-only one_click upstream and returns blank 200",
+        "malformed path tokens have the same generic successes without upstream calls",
+        "POST body is bounded before any upstream request",
+        "Supabase failures remain retryable 5xx and are never redirected",
+        "missing or short Worker secret fails closed without an upstream call",
+        "production upstream rejects every unpinned HTTPS endpoint",
+    ):
+        assert behavior in worker_test
+
+
+def test_supabase_function_is_body_only_internal_post() -> None:
     helpers = read(UNSUBSCRIBE_HELPERS)
     index = read(UNSUBSCRIBE_INDEX)
     config = read(CONFIG)
 
     assert "[functions.unsubscribe-email-notifications]\nverify_jwt = false" in config
-    assert 'request.method !== "GET" && request.method !== "POST"' in helpers
-    assert 'form.get("List-Unsubscribe") === "One-Click"' in helpers
+    assert 'request.method !== "POST"' in helpers
+    assert 'dependencies.getEnv("UNSUBSCRIBE_WORKER_SECRET")' in helpers
+    assert 'request.headers.get("authorization")' in helpers
+    assert 'crypto.subtle.digest("SHA-256"' in helpers
+    assert "difference |= leftBytes[index] ^ rightBytes[index]" in helpers
+    assert "unauthorizedResponse()" in helpers
+    assert "configurationErrorResponse()" in helpers
+    assert "origin" not in helpers.lower()
+    assert 'interaction !== "human" && interaction !== "one_click"' in helpers
+    assert '!keys.includes("token")' in helpers
     assert "request.body.getReader()" in helpers
     assert 'new TextDecoder("utf-8", { fatal: true })' in helpers
     assert "await reader.cancel()" in helpers
     assert "request.text()" not in helpers
-    assert "confirmationResponse" in helpers
     assert "minimalSuccessResponse" in helpers
-    assert "humanSuccessResponse" in helpers
     assert "methodNotAllowedResponse" in helpers
     assert '"cache-control": "no-store"' in helpers
-    assert '"content-security-policy"' in helpers
+    assert "request.url" not in helpers
+    assert "searchParams" not in helpers
+    assert "tokenExists" not in helpers
+    assert '"email_unsubscribe_token_is_valid"' not in index
     assert "console.log" not in index
     assert "request.url" not in index
+    assert helpers.index('dependencies.getEnv("UNSUBSCRIBE_WORKER_SECRET")') < helpers.index(
+        'request.headers.get("content-type")'
+    )
 
 
 def test_account_ui_blocks_provider_suppression_without_mutating_reason() -> None:
@@ -165,6 +239,16 @@ group by status;"""
     assert "`processing`と`retry_wait`がともに0行" in runbook
     assert "通常workerでdrainしてからmaintenance boundary" in runbook
     assert "rollbackが必要なら、事前の`retry_wait=0`確認" in runbook
+    assert "Supabase hosted GET returned `text/plain`" in runbook
+    assert "request.url` / `request.search` / `event_message" in runbook
+    assert "Cloudflare Worker deploy + custom domain" in runbook
+    assert "invocation_logs=false" in runbook
+    assert "fake token log boundary" in runbook
+    assert "UNSUBSCRIBE_WORKER_SECRET" in runbook
+    assert "Authorization値" in runbook
+    assert "workers.dev disabled" in runbook
+    assert "Preview URLs disabled" in runbook
+    assert "secret値をterminal output、docs、chatへ出さない" in runbook
     assert "Phase 3.5c" in runbook
     for boundary in (
         "Resend Suppression Listの自動解除",

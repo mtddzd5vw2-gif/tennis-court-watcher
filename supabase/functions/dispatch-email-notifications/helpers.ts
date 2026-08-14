@@ -52,6 +52,8 @@ export interface ResendEmailTag {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PRODUCTION_UNSUBSCRIBE_PUBLIC_ORIGIN =
+  "https://unsubscribe.tenniscourtwatcher.com";
 
 export function escapeHtml(value: string): string {
   return value
@@ -91,7 +93,7 @@ export function deterministicIdempotencyKey(messageId: string): string {
 }
 
 export function buildUnsubscribeUrl(
-  supabaseUrl: string,
+  publicBaseUrl: string,
   token: string,
 ): string {
   if (!UUID_PATTERN.test(token)) {
@@ -100,16 +102,28 @@ export function buildUnsubscribeUrl(
 
   let url: URL;
   try {
-    url = new URL("/functions/v1/unsubscribe-email-notifications", supabaseUrl);
+    url = new URL(publicBaseUrl);
   } catch {
-    throw new Error("Invalid Supabase URL.");
+    throw new Error("Invalid public unsubscribe base URL.");
   }
-  if (!validUnsubscribeProtocol(url)) {
-    throw new Error("Invalid Supabase URL.");
+  const productionOrigin = publicBaseUrl ===
+      PRODUCTION_UNSUBSCRIBE_PUBLIC_ORIGIN ||
+    publicBaseUrl === `${PRODUCTION_UNSUBSCRIBE_PUBLIC_ORIGIN}/`;
+  const localOrigin = (url.protocol === "http:" || url.protocol === "https:") &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+    url.username.length === 0 &&
+    url.password.length === 0;
+  if (
+    (!productionOrigin && !localOrigin) ||
+    url.username.length !== 0 ||
+    url.password.length !== 0 ||
+    (url.pathname !== "" && url.pathname !== "/") ||
+    url.search.length !== 0 ||
+    url.hash.length !== 0
+  ) {
+    throw new Error("Invalid public unsubscribe base URL.");
   }
-  url.search = "";
-  url.hash = "";
-  url.searchParams.set("token", token.toLowerCase());
+  url.pathname = `/u/${token.toLowerCase()}`;
   return url.toString();
 }
 
