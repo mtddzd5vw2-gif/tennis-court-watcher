@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildResendPayload,
   classifyResendError,
   deterministicIdempotencyKey,
   escapeHtml,
@@ -8,6 +9,8 @@ import {
   renderEmail,
   validHttpUrl,
 } from "./helpers.ts";
+
+const MESSAGE_ID = "123e4567-e89b-42d3-a456-426614174000";
 
 test("escapeHtml escapes every HTML-sensitive character", () => {
   assert.equal(
@@ -97,12 +100,78 @@ test("classifyResendError follows retryable and permanent policy", () => {
 });
 
 test("deterministicIdempotencyKey is stable for a message", () => {
-  const messageId = "123E4567-E89B-42D3-A456-426614174000";
+  const messageId = MESSAGE_ID.toUpperCase();
   const expected =
     "tennis-court-watcher/email/123e4567-e89b-42d3-a456-426614174000";
   assert.equal(deterministicIdempotencyKey(messageId), expected);
   assert.equal(deterministicIdempotencyKey(messageId), expected);
   assert.throws(() => deterministicIdempotencyKey("not-a-uuid"));
+});
+
+test("buildResendPayload includes exact correlation tags", () => {
+  const rendered = {
+    subject: "Court available",
+    text: "Court available",
+    html: "<p>Court available</p>",
+  };
+
+  const payload = buildResendPayload(
+    "Tennis Court Watcher <notify@example.test>",
+    "member@example.test",
+    rendered,
+    MESSAGE_ID.toUpperCase(),
+  );
+
+  assert.deepEqual(payload.tags, [
+    { name: "tcw_source", value: "user_notification" },
+    { name: "tcw_message_id", value: MESSAGE_ID },
+  ]);
+  assert.throws(() =>
+    buildResendPayload(
+      "notify@example.test",
+      "member@example.test",
+      rendered,
+      "not-a-uuid",
+    )
+  );
+});
+
+test("payload fingerprint includes tags and remains deterministic", async () => {
+  const rendered = {
+    subject: "Court available",
+    text: "Court available",
+    html: "<p>Court available</p>",
+  };
+  const secret = "a".repeat(32);
+  const firstPayload = JSON.stringify(buildResendPayload(
+    "notify@example.test",
+    "member@example.test",
+    rendered,
+    MESSAGE_ID,
+  ));
+  const repeatedPayload = JSON.stringify(buildResendPayload(
+    "notify@example.test",
+    "member@example.test",
+    rendered,
+    MESSAGE_ID,
+  ));
+  const otherMessagePayload = JSON.stringify(buildResendPayload(
+    "notify@example.test",
+    "member@example.test",
+    rendered,
+    "223e4567-e89b-42d3-a456-426614174000",
+  ));
+
+  assert.match(firstPayload, /"tags":\[/);
+  assert.equal(firstPayload, repeatedPayload);
+  assert.equal(
+    await hmacPayloadFingerprint(firstPayload, secret),
+    await hmacPayloadFingerprint(repeatedPayload, secret),
+  );
+  assert.notEqual(
+    await hmacPayloadFingerprint(firstPayload, secret),
+    await hmacPayloadFingerprint(otherMessagePayload, secret),
+  );
 });
 
 test("hmacPayloadFingerprint binds the exact payload and secret", async () => {

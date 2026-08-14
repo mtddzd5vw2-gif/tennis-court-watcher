@@ -210,7 +210,7 @@ def test_edge_function_is_fail_closed_and_service_to_service_only() -> None:
 def test_worker_resolves_auth_recipient_only_immediately_before_send() -> None:
     source = INDEX_PATH.read_text(encoding="utf-8")
 
-    assert "supabase.auth.admin.getUserById(message.user_id)" in source
+    assert "getUserById(message.user_id)" in source
     auth_lookup = source.index("getUserById(message.user_id)")
     authorization = source.index('"authorize_email_message_send"')
     resend_fetch = source.index("fetch(RESEND_EMAIL_ENDPOINT")

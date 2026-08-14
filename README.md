@@ -13,6 +13,8 @@
 - [Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)
 - [Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)
 - [Auth Email Operations](docs/AUTH_EMAIL_OPERATIONS.md)
+- [Phase 3 User Email Notification Design](docs/PHASE3_USER_EMAIL_NOTIFICATION_DESIGN.md)
+- [Phase 3 Resend Webhook Runbook](docs/PHASE3_RESEND_WEBHOOK.md)
 - [Phase 3 Scheduler Watchdog](docs/PHASE3_SCHEDULER_WATCHDOG.md)
 
 ## 現在の機能
@@ -38,6 +40,7 @@
 - active会員の有効な条件だけを返すservice-role専用 `list_notification_rules_for_matching` RPC
 - 利用者・チャネル・`slot_id` 単位で重複を防ぐメール配信queueとdelivery worker
 - GitHub Actionsによる `matching -> enqueue -> dispatch` の定期メール配信
+- 署名済みResend webhookの重複・順序逆転に耐えるdelivery feedbackとbounce/complaint/suppression時の通知停止
 - 固定版 `supabase-js` v2と、Repository Variablesから生成するブラウザ公開設定
 
 空き状況は候補です。予約前に必ず公式サイトで最新情報を確認してください。
@@ -316,6 +319,8 @@ Cookie値、Authorization、APIキー、token・secretを含むヘッダー値�
 
 本番通知は、利用者の通知条件と `run-output/availability.json` を照合し、`matching -> enqueue -> dispatch` の順で利用者別メールを配信します。重複防止はDB側の利用者・チャネル・`slot_id` 単位で行います。各ステップは独立したRepository Variableで有効化し、enqueueはservice-role credential、dispatchはdelivery worker credentialだけを受け取ります。
 
+Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを加え、署名済みwebhookの `sent`、`delivery_delayed`、`delivered`、`failed`、`bounced`、`complained`、`suppressed` をDBへ正規化するコードを追加しました。`svix-id`で重複を排除し、到着順ではなくeventの`created_at`と固定priorityで状態を決めます。raw webhook payload、宛先、sender、subjectは保存・ログ出力しません。production migration、Function deploy、Resend Dashboard設定、canaryは未実施であり、手順とsender payload変更前guardは[Phase 3 Resend Webhook Runbook](docs/PHASE3_RESEND_WEBHOOK.md)に分離しています。
+
 Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。会員とLINEユーザーを紐づける利用者別LINE通知はPhase 4の将来機能として扱います。
 
 手動実行の `dry_run=true` では、取得とArtifact生成は行いますが、リポジトリ内データの更新、commit、push、Pagesデプロイ、email enqueue/dispatchは行いません。
@@ -362,7 +367,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 2. GitHub Pagesの本番callback URLをSupabaseのRedirect URLsへ登録し、Repository Variablesを設定する
 3. メールマジックリンク、SMTP、リンク有効期限、レート制限を設定して実環境smoke testを行う
 4. 対象Supabaseのmigration履歴を確認して未適用分を手動適用し、複数の架空ユーザーでRLS、RPC、5件上限、並行作成を実DB検証する
-5. Phase 3.5でResend webhookとdelivery feedbackを実装する
+5. [Phase 3 Resend Webhook Runbook](docs/PHASE3_RESEND_WEBHOOK.md)に従い、Phase 3.5aのmigration・Function・Resend webhook・sender tagを段階的に本番反映してcanary確認する
 6. 退会Edge Functionと保持・削除方針を別実装する
 7. 利用規約とプライバシーポリシーの暫定初版を確認し、版番号・発効日・問い合わせ先を確定する
 8. GitHub Actionsの外部ActionをコミットSHAで固定する
@@ -371,7 +376,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/workerと自動enqueue/dispatchは実装済みです。Phase 3.5のdelivery feedback、退会処理、Phase 4の利用者別LINE通知は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、Phase 3.5aのdelivery feedbackコードは実装済みです。Phase 3.5aのproduction rollout、退会処理、Phase 4の利用者別LINE通知は未実施・未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。

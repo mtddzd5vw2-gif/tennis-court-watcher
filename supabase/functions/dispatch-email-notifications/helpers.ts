@@ -38,6 +38,12 @@ export interface ResendEmailPayload {
   subject: string;
   text: string;
   html: string;
+  tags: ResendEmailTag[];
+}
+
+export interface ResendEmailTag {
+  name: "tcw_source" | "tcw_message_id";
+  value: string;
 }
 
 const UUID_PATTERN =
@@ -255,13 +261,22 @@ export function buildResendPayload(
   from: string,
   recipient: string,
   rendered: RenderedEmail,
+  messageId: string,
 ): ResendEmailPayload {
+  if (!UUID_PATTERN.test(messageId)) {
+    throw new Error("Invalid message identifier.");
+  }
+
   return {
     from,
     to: [recipient],
     subject: rendered.subject,
     text: rendered.text,
     html: rendered.html,
+    tags: [
+      { name: "tcw_source", value: "user_notification" },
+      { name: "tcw_message_id", value: messageId.toLowerCase() },
+    ],
   };
 }
 
