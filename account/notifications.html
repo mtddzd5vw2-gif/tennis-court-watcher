@@ -61,6 +61,26 @@
       </section>
 
       <div data-notification-content hidden>
+        <section
+          class="panel email-notification-preference"
+          aria-labelledby="email-notification-preference-title"
+        >
+          <h2 id="email-notification-preference-title">メール通知</h2>
+          <label class="check-option check-option--enabled">
+            <input type="checkbox" data-email-notification-toggle>
+            <span>
+              <strong>空き通知メールを受け取る</strong>
+              <small>登録した通知条件に一致する空きが見つかったときに送信します。</small>
+            </span>
+          </label>
+          <p class="form-note" data-email-notification-guidance></p>
+          <p
+            class="status-text notification-status"
+            data-email-notification-status
+            aria-live="polite"
+          ></p>
+        </section>
+
         <div class="notice" aria-label="現在の空き取得範囲">
           現在取得している空きは、土日・日本の祝日の8:00〜13:00で、
           60分以上の枠です。平日・時間外・60分未満の条件も保存できますが、

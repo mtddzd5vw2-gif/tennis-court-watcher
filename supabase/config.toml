@@ -392,6 +392,10 @@ verify_jwt = false
 [functions.resend-email-webhook]
 verify_jwt = false
 
+# Public capability URL used by human confirmation and RFC 8058 one-click POST.
+[functions.unsubscribe-email-notifications]
+verify_jwt = false
+
 # Authentication is implemented inside the scheduler watchdog with a
 # dedicated high-entropy secret. Browser-originated requests are rejected.
 [functions.update-availability-watchdog]

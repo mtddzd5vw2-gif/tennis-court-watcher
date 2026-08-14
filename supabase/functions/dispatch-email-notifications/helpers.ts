@@ -38,6 +38,10 @@ export interface ResendEmailPayload {
   subject: string;
   text: string;
   html: string;
+  headers: {
+    "List-Unsubscribe": string;
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click";
+  };
   tags: ResendEmailTag[];
 }
 
@@ -84,6 +88,29 @@ export function deterministicIdempotencyKey(messageId: string): string {
     throw new Error("Invalid message identifier.");
   }
   return `tennis-court-watcher/email/${messageId.toLowerCase()}`;
+}
+
+export function buildUnsubscribeUrl(
+  supabaseUrl: string,
+  token: string,
+): string {
+  if (!UUID_PATTERN.test(token)) {
+    throw new Error("Invalid unsubscribe token.");
+  }
+
+  let url: URL;
+  try {
+    url = new URL("/functions/v1/unsubscribe-email-notifications", supabaseUrl);
+  } catch {
+    throw new Error("Invalid Supabase URL.");
+  }
+  if (!validUnsubscribeProtocol(url)) {
+    throw new Error("Invalid Supabase URL.");
+  }
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("token", token.toLowerCase());
+  return url.toString();
 }
 
 export function classifyResendError(
@@ -185,9 +212,16 @@ export function extractResendMessageId(value: unknown): string | null {
   return id;
 }
 
-export function renderEmail(items: EmailNotificationItem[]): RenderedEmail {
+export function renderEmail(
+  items: EmailNotificationItem[],
+  unsubscribeUrl: string,
+): RenderedEmail {
   if (items.length === 0) {
     throw new Error("At least one notification item is required.");
+  }
+  const safeUnsubscribeUrl = validUnsubscribeUrl(unsubscribeUrl);
+  if (safeUnsubscribeUrl === null) {
+    throw new Error("Invalid unsubscribe URL.");
   }
 
   const subject =
@@ -242,10 +276,15 @@ export function renderEmail(items: EmailNotificationItem[]): RenderedEmail {
 
   textParts.push(
     "空き状況は変わることがあります。予約ページで最新状況をご確認ください。",
+    "",
+    `メール通知を停止する: ${safeUnsubscribeUrl}`,
   );
+  const escapedUnsubscribeUrl = escapeHtml(safeUnsubscribeUrl);
   htmlParts.push(
     "</ol>",
     "<p>空き状況は変わることがあります。予約ページで最新状況をご確認ください。</p>",
+    "<hr>",
+    `<p><a href="${escapedUnsubscribeUrl}" rel="noopener noreferrer">メール通知を停止する</a></p>`,
     "</body>",
     "</html>",
   );
@@ -262,9 +301,14 @@ export function buildResendPayload(
   recipient: string,
   rendered: RenderedEmail,
   messageId: string,
+  unsubscribeUrl: string,
 ): ResendEmailPayload {
   if (!UUID_PATTERN.test(messageId)) {
     throw new Error("Invalid message identifier.");
+  }
+  const safeUnsubscribeUrl = validUnsubscribeUrl(unsubscribeUrl);
+  if (safeUnsubscribeUrl === null) {
+    throw new Error("Invalid unsubscribe URL.");
   }
 
   return {
@@ -273,6 +317,10 @@ export function buildResendPayload(
     subject: rendered.subject,
     text: rendered.text,
     html: rendered.html,
+    headers: {
+      "List-Unsubscribe": `<${safeUnsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
     tags: [
       { name: "tcw_source", value: "user_notification" },
       { name: "tcw_message_id", value: messageId.toLowerCase() },
@@ -325,6 +373,20 @@ function assertNotificationItem(
   ) {
     throw new Error("Invalid notification item.");
   }
+}
+
+function validUnsubscribeUrl(value: string): string | null {
+  const candidate = validHttpUrl(value);
+  if (candidate === null) {
+    return null;
+  }
+  return validUnsubscribeProtocol(new URL(candidate)) ? candidate : null;
+}
+
+function validUnsubscribeProtocol(url: URL): boolean {
+  return url.protocol === "https:" ||
+    (url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1"));
 }
 
 function normalizeDisplayText(value: string): string {
