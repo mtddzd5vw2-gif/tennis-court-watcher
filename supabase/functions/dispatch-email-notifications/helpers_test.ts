@@ -14,7 +14,7 @@ import {
 const MESSAGE_ID = "123e4567-e89b-42d3-a456-426614174000";
 const UNSUBSCRIBE_TOKEN = "323e4567-e89b-42d3-a456-426614174000";
 const UNSUBSCRIBE_URL =
-  `https://project.supabase.co/functions/v1/unsubscribe-email-notifications?token=${UNSUBSCRIBE_TOKEN}`;
+  `https://unsubscribe.tenniscourtwatcher.com/u/${UNSUBSCRIBE_TOKEN}`;
 
 test("escapeHtml escapes every HTML-sensitive character", () => {
   assert.equal(
@@ -57,24 +57,55 @@ test("renderEmail escapes user-controlled HTML and omits unsafe links", () => {
   assert.doesNotMatch(rendered.html, /<img/);
   assert.match(
     rendered.text,
-    /メール通知を停止する: https:\/\/project\.supabase\.co/,
+    /メール通知を停止する: https:\/\/unsubscribe\.tenniscourtwatcher\.com\/u\//,
   );
   assert.match(rendered.html, />メール通知を停止する<\/a>/);
 });
 
-test("buildUnsubscribeUrl creates the canonical Edge Function URL", () => {
+test("buildUnsubscribeUrl creates the canonical public Worker URL", () => {
   assert.equal(
     buildUnsubscribeUrl(
-      "https://project.supabase.co/ignored",
+      "https://unsubscribe.tenniscourtwatcher.com/",
       UNSUBSCRIBE_TOKEN,
     ),
     UNSUBSCRIBE_URL,
   );
   assert.throws(() =>
-    buildUnsubscribeUrl("https://project.supabase.co", "bad")
+    buildUnsubscribeUrl("https://unsubscribe.tenniscourtwatcher.com", "bad")
   );
   assert.throws(() =>
-    buildUnsubscribeUrl("http://project.supabase.co", UNSUBSCRIBE_TOKEN)
+    buildUnsubscribeUrl(
+      "http://unsubscribe.tenniscourtwatcher.com",
+      UNSUBSCRIBE_TOKEN,
+    )
+  );
+  assert.throws(() =>
+    buildUnsubscribeUrl(
+      "https://unsubscribe.tenniscourtwatcher.com/base",
+      UNSUBSCRIBE_TOKEN,
+    )
+  );
+  assert.throws(() =>
+    buildUnsubscribeUrl(
+      "https://unsubscribe.tenniscourtwatcher.com?token=bad",
+      UNSUBSCRIBE_TOKEN,
+    )
+  );
+  assert.throws(() =>
+    buildUnsubscribeUrl(
+      "https://example.com",
+      UNSUBSCRIBE_TOKEN,
+    )
+  );
+  assert.throws(() =>
+    buildUnsubscribeUrl(
+      "https://unsubscribe.tenniscourtwatcher.com:443",
+      UNSUBSCRIBE_TOKEN,
+    )
+  );
+  assert.equal(
+    buildUnsubscribeUrl("http://localhost:8787", UNSUBSCRIBE_TOKEN),
+    `http://localhost:8787/u/${UNSUBSCRIBE_TOKEN}`,
   );
 });
 

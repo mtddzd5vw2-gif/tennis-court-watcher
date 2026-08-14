@@ -323,7 +323,7 @@ Cookie値、Authorization、APIキー、token・secretを含むヘッダー値�
 
 Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを加え、署名済みwebhookの `sent`、`delivery_delayed`、`delivered`、`failed`、`bounced`、`complained`、`suppressed` をDBへ正規化しました。`svix-id`で重複を排除し、到着順ではなくeventの`created_at`と固定priorityで状態を決めます。productionではmigration、webhook、senderを反映し、署名拒否、外部認証メールの無視、通知canaryのdelivered、provider event、duplicate replayのno-opまで確認済みです。現在はcanary後24〜48時間のaggregate観察中です。raw webhook payload、宛先、sender、subjectは保存・ログ出力しません。
 
-Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、確認GETとRFC 8058 POSTを扱う公開Edge Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。production反映は未実施であり、必須guardと手順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
+Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、Cloudflare Workerの公開confirmation/RFC 8058 endpoint、body-onlyのSupabase unsubscribe Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。Supabase hosted GETが`text/plain`になること、およびquery capabilityがSupabase Invocation LogsのURL/searchへ保存されることをsender rollout前の実測で確認したため、直接Supabase URLは棄却しました。production migrationと旧Function v1は反映済みですが、Worker、Function hotfix、sender/footer/headerは未deployで、global flagも変更していません。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。必須log boundary、maintenance guard、rollout順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
 
 Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。会員とLINEユーザーを紐づける利用者別LINE通知はPhase 4の将来機能として扱います。
 

@@ -95,12 +95,16 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
   const resendFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
   const payloadHmacKey = Deno.env.get("EMAIL_DELIVERY_PAYLOAD_HMAC_KEY") ?? "";
+  const unsubscribePublicBaseUrl = Deno.env.get(
+    "EMAIL_UNSUBSCRIBE_PUBLIC_BASE_URL",
+  ) ?? "";
   if (
     supabaseUrl.length === 0 ||
     serviceRoleKey.length === 0 ||
     resendApiKey.length === 0 ||
     resendFrom.length === 0 ||
-    payloadHmacKey.length < 32
+    payloadHmacKey.length < 32 ||
+    unsubscribePublicBaseUrl.length === 0
   ) {
     return finish(503);
   }
@@ -134,10 +138,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     await processClaimedMessage(
       supabase,
       candidate,
-      supabaseUrl,
       resendApiKey,
       resendFrom,
       payloadHmacKey,
+      unsubscribePublicBaseUrl,
       metrics,
     );
   }
@@ -148,10 +152,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
 async function processClaimedMessage(
   supabase: SupabaseWorkerClient,
   message: ClaimedMessage,
-  supabaseUrl: string,
   resendApiKey: string,
   resendFrom: string,
   payloadHmacKey: string,
+  unsubscribePublicBaseUrl: string,
   metrics: Metrics,
 ): Promise<void> {
   try {
@@ -171,7 +175,10 @@ async function processClaimedMessage(
       );
       return;
     }
-    const unsubscribeUrl = buildUnsubscribeUrl(supabaseUrl, unsubscribeToken);
+    const unsubscribeUrl = buildUnsubscribeUrl(
+      unsubscribePublicBaseUrl,
+      unsubscribeToken,
+    );
 
     const { data: authData, error: authError } = await supabase.auth.admin
       .getUserById(message.user_id);

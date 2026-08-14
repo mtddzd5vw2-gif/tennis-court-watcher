@@ -392,7 +392,9 @@ verify_jwt = false
 [functions.resend-email-webhook]
 verify_jwt = false
 
-# Public capability URL used by human confirmation and RFC 8058 one-click POST.
+# Body-only bridge authenticated inside the Function with the dedicated
+# UNSUBSCRIBE_WORKER_SECRET. Browser GET and query-token contracts are
+# intentionally unsupported.
 [functions.unsubscribe-email-notifications]
 verify_jwt = false
 

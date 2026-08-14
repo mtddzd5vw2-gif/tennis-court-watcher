@@ -4,11 +4,6 @@ export interface UnsubscribeRpcArgs {
 
 export interface UnsubscribeDependencies {
   getEnv: (name: string) => string | undefined;
-  tokenExists: (
-    supabaseUrl: string,
-    serviceRoleKey: string,
-    args: UnsubscribeRpcArgs,
-  ) => Promise<{ data: unknown; error: unknown }>;
   unsubscribe: (
     supabaseUrl: string,
     serviceRoleKey: string,
@@ -20,6 +15,9 @@ export interface UnsubscribeDependencies {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const MAX_FORM_BODY_BYTES = 2048;
+const MINIMUM_SECRET_BYTES = 32;
+
+type Interaction = "human" | "one_click";
 
 class FormBodyTooLargeError extends Error {}
 
@@ -32,47 +30,28 @@ export function createEmailUnsubscribeHandler(
     const finish = (
       response: Response,
       outcome: string,
-      interaction?: "confirmation" | "human" | "one_click",
+      interaction?: Interaction,
     ): Response => {
       log(JSON.stringify({ outcome, ...(interaction ? { interaction } : {}) }));
       return response;
     };
 
-    if (request.method !== "GET" && request.method !== "POST") {
+    if (request.method !== "POST") {
       return finish(methodNotAllowedResponse(), "method_not_allowed");
     }
 
-    const supabaseUrl = dependencies.getEnv("SUPABASE_URL") ?? "";
-    const serviceRoleKey = dependencies.getEnv("SUPABASE_SERVICE_ROLE_KEY") ??
-      "";
-    if (supabaseUrl.length === 0 || serviceRoleKey.length === 0) {
-      return finish(errorResponse(), "configuration_error");
+    const workerSecret = dependencies.getEnv("UNSUBSCRIBE_WORKER_SECRET") ?? "";
+    if (!validWorkerSecret(workerSecret)) {
+      return finish(configurationErrorResponse(), "configuration_error");
     }
-
-    const requestUrl = new URL(request.url);
-    if (request.method === "GET") {
-      const token = normalizedToken(requestUrl.searchParams.get("token"));
-      if (token !== null) {
-        let result: { data: unknown; error: unknown };
-        try {
-          result = await dependencies.tokenExists(
-            supabaseUrl,
-            serviceRoleKey,
-            { p_token: token },
-          );
-        } catch {
-          return finish(errorResponse(), "database_error");
-        }
-        if (result.error !== null || typeof result.data !== "boolean") {
-          return finish(errorResponse(), "database_error");
-        }
-      }
-
-      return finish(
-        confirmationResponse(token ?? ""),
-        "confirmation_rendered",
-        "confirmation",
-      );
+    const suppliedSecret = readBearerToken(
+      request.headers.get("authorization"),
+    );
+    if (
+      suppliedSecret === null ||
+      !(await secretsEqual(suppliedSecret, workerSecret))
+    ) {
+      return finish(unauthorizedResponse(), "unauthorized");
     }
 
     const contentType = request.headers.get("content-type") ?? "";
@@ -94,48 +73,45 @@ export function createEmailUnsubscribeHandler(
 
     let form: URLSearchParams;
     try {
-      const rawBody = await readBoundedUtf8Body(
-        request,
-        MAX_FORM_BODY_BYTES,
+      form = new URLSearchParams(
+        await readBoundedUtf8Body(request, MAX_FORM_BODY_BYTES),
       );
-      form = new URLSearchParams(rawBody);
     } catch {
       return finish(badRequestResponse(), "invalid_request");
     }
 
-    const formKeys = Array.from(form.keys());
-    const oneClick = formKeys.length === 1 &&
-      formKeys[0] === "List-Unsubscribe" &&
-      form.getAll("List-Unsubscribe").length === 1 &&
-      form.get("List-Unsubscribe") === "One-Click";
-    const human = !oneClick && form.get("interaction") === "human";
-    if (!oneClick && !human) {
+    const parsed = parseInternalForm(form);
+    if (parsed === null) {
       return finish(badRequestResponse(), "invalid_request");
     }
 
-    const token = normalizedToken(
-      oneClick ? requestUrl.searchParams.get("token") : form.get("token"),
-    );
-    if (token !== null) {
-      let result: { data: unknown; error: unknown };
-      try {
-        result = await dependencies.unsubscribe(
-          supabaseUrl,
-          serviceRoleKey,
-          { p_token: token },
-        );
-      } catch {
-        return finish(errorResponse(), "database_error");
-      }
-      if (!validUnsubscribeResult(result)) {
-        return finish(errorResponse(), "database_error");
-      }
+    const token = normalizedToken(parsed.token);
+    if (token === null) {
+      return finish(minimalSuccessResponse(), "processed", parsed.interaction);
     }
 
-    if (oneClick) {
-      return finish(minimalSuccessResponse(), "processed", "one_click");
+    const supabaseUrl = dependencies.getEnv("SUPABASE_URL") ?? "";
+    const serviceRoleKey = dependencies.getEnv("SUPABASE_SERVICE_ROLE_KEY") ??
+      "";
+    if (supabaseUrl.length === 0 || serviceRoleKey.length === 0) {
+      return finish(errorResponse(), "configuration_error", parsed.interaction);
     }
-    return finish(humanSuccessResponse(), "processed", "human");
+
+    let result: { data: unknown; error: unknown };
+    try {
+      result = await dependencies.unsubscribe(
+        supabaseUrl,
+        serviceRoleKey,
+        { p_token: token },
+      );
+    } catch {
+      return finish(errorResponse(), "database_error", parsed.interaction);
+    }
+    if (!validUnsubscribeResult(result)) {
+      return finish(errorResponse(), "database_error", parsed.interaction);
+    }
+
+    return finish(minimalSuccessResponse(), "processed", parsed.interaction);
   };
 }
 
@@ -172,10 +148,62 @@ async function readBoundedUtf8Body(
   return new TextDecoder("utf-8", { fatal: true }).decode(body);
 }
 
-function normalizedToken(value: string | null): string | null {
-  return value !== null && UUID_PATTERN.test(value)
-    ? value.toLowerCase()
-    : null;
+function parseInternalForm(
+  form: URLSearchParams,
+): { interaction: Interaction; token: string } | null {
+  const keys = Array.from(form.keys());
+  if (
+    keys.length !== 2 ||
+    new Set(keys).size !== 2 ||
+    !keys.includes("interaction") ||
+    !keys.includes("token") ||
+    form.getAll("interaction").length !== 1 ||
+    form.getAll("token").length !== 1
+  ) {
+    return null;
+  }
+
+  const interaction = form.get("interaction");
+  const token = form.get("token");
+  if (
+    (interaction !== "human" && interaction !== "one_click") ||
+    token === null
+  ) {
+    return null;
+  }
+  return { interaction, token };
+}
+
+function normalizedToken(value: string): string | null {
+  return UUID_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
+function validWorkerSecret(value: string): boolean {
+  return !/\s/u.test(value) &&
+    new TextEncoder().encode(value).byteLength >= MINIMUM_SECRET_BYTES;
+}
+
+function readBearerToken(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const match = /^Bearer ([^\s]+)$/.exec(value);
+  return match?.[1] ?? null;
+}
+
+async function secretsEqual(left: string, right: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [leftDigest, rightDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(left)),
+    crypto.subtle.digest("SHA-256", encoder.encode(right)),
+  ]);
+  const leftBytes = new Uint8Array(leftDigest);
+  const rightBytes = new Uint8Array(rightDigest);
+  let difference = leftBytes.length ^ rightBytes.length;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    difference |= leftBytes[index] ^ rightBytes[index];
+  }
+  return difference === 0;
 }
 
 function validUnsubscribeResult(
@@ -190,75 +218,39 @@ function validUnsubscribeResult(
   return (result.data as Record<string, unknown>).outcome === "processed";
 }
 
-function htmlResponse(body: string, status = 200): Response {
-  return new Response(body, {
+function emptyResponse(status: number): Response {
+  return new Response(null, {
     status,
     headers: {
-      "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-      "referrer-policy": "no-referrer",
+      "content-length": "0",
       "x-content-type-options": "nosniff",
     },
   });
 }
 
-function page(title: string, content: string): string {
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><style>body{font-family:system-ui,sans-serif;line-height:1.7;margin:0;background:#f5f7f5;color:#17221a}main{max-width:36rem;margin:10vh auto;padding:2rem;background:#fff;border-radius:1rem;box-shadow:0 0.5rem 2rem #17221a18}button{font:inherit;font-weight:700;padding:.75rem 1rem;border:0;border-radius:.5rem;background:#176b3a;color:#fff;cursor:pointer}</style></head><body><main><h1>${title}</h1>${content}</main></body></html>`;
-}
-
-function confirmationResponse(token: string): Response {
-  const content =
-    `<p>この操作を続けると、テニスコートの空き通知メールを停止します。</p><form method="post" action="/functions/v1/unsubscribe-email-notifications"><input type="hidden" name="interaction" value="human"><input type="hidden" name="token" value="${token}"><button type="submit">メール通知を停止する</button></form>`;
-  return htmlResponse(page("メール通知の停止", content));
-}
-
-function humanSuccessResponse(): Response {
-  return htmlResponse(page(
-    "メール通知を停止しました",
-    "<p>お手続きは完了しました。このページを閉じてください。</p>",
-  ));
-}
-
 function minimalSuccessResponse(): Response {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      "cache-control": "no-store",
-      "content-length": "0",
-    },
-  });
+  return emptyResponse(200);
 }
 
 function badRequestResponse(): Response {
-  return htmlResponse(
-    page(
-      "リクエストを処理できませんでした",
-      "<p>メール内のリンクからもう一度お試しください。</p>",
-    ),
-    400,
-  );
+  return emptyResponse(400);
 }
 
 function errorResponse(): Response {
-  return htmlResponse(
-    page(
-      "現在お手続きできません",
-      "<p>時間をおいて、もう一度お試しください。</p>",
-    ),
-    502,
-  );
+  return emptyResponse(502);
+}
+
+function configurationErrorResponse(): Response {
+  return emptyResponse(503);
+}
+
+function unauthorizedResponse(): Response {
+  return emptyResponse(401);
 }
 
 function methodNotAllowedResponse(): Response {
-  const response = htmlResponse(
-    page(
-      "リクエストを処理できませんでした",
-      "<p>メール内のリンクからお手続きください。</p>",
-    ),
-    405,
-  );
-  response.headers.set("allow", "GET, POST");
+  const response = emptyResponse(405);
+  response.headers.set("allow", "POST");
   return response;
 }
