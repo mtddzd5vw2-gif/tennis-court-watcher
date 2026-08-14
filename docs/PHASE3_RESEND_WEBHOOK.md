@@ -4,7 +4,9 @@
 
 Resend APIが送信要求を受理した後の`sent`、`delivery_delayed`、`delivered`、`failed`、`bounced`、`complained`、`suppressed`を、署名済みwebhookから`notification_messages`と`notification_provider_events`へ反映する。Resend webhookはat-least-onceかつout-of-orderなので、`svix-id`をeventの冪等性key、top-level `created_at`をprovider順序の正とする。
 
-Phase 3.5aのコード、forward migration、pgTAP、Deno test、静的pytestはリポジトリに実装する。production migration push、Function deploy、Resend Dashboard設定、secret設定、本番canaryはこの実装作業に含めず、後で人間が本runbookに従って行う。
+Phase 3.5aのコード、forward migration、pgTAP、Deno test、静的pytestは完了した。production反映とcanary確認も完了し、現在は手順10の完了条件であるcanary後24〜48時間のaggregate観察中である。本runbookは確認済みの認証境界とrollback guardの記録として維持する。Phase 3.5b unsubscribeのproduction手順は[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)へ分離する。
+
+productionではmigration適用、webhook deploy、missing/invalid signatureの`401`、実署名付き外部Authメールの`ignored_unmatched 200`、通知canaryのsent→delivered、provider eventsのsent/delivered、duplicate replayの`stored_event_count=0`を確認済みである。
 
 ## 2. 実装境界
 
@@ -100,7 +102,7 @@ git diff --stat
 
 pgTAPにはaccepted→sent→delivered、delay/failure、3種の自動disable、disableしない条件、重複、順序逆転、direct/tag correlation、conflict/unmatched、table/RPC権限を含める。Deno testにはvalid/invalid signature、missing header、raw-body、method/origin/body size、payload検証、unsupported、DB retry、duplicate、非PIIログを含める。
 
-## 6. Production rollout前の必須guard
+## 6. sender payload変更前の必須guard
 
 sender tag追加はexact payload fingerprintを変える。既に最初のResend試行を開始したmessageが`processing`または`retry_wait`に残っている状態でsenderを切り替えると、同じidempotency keyに別payloadを送ろうとして`provider_payload_changed`になる。このため、sender tagをproduction deployする直前に必ず次を実行する。
 

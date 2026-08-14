@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildResendPayload,
+  buildUnsubscribeUrl,
   classifyResendError,
   deterministicIdempotencyKey,
   escapeHtml,
@@ -11,6 +12,9 @@ import {
 } from "./helpers.ts";
 
 const MESSAGE_ID = "123e4567-e89b-42d3-a456-426614174000";
+const UNSUBSCRIBE_TOKEN = "323e4567-e89b-42d3-a456-426614174000";
+const UNSUBSCRIBE_URL =
+  `https://project.supabase.co/functions/v1/unsubscribe-email-notifications?token=${UNSUBSCRIBE_TOKEN}`;
 
 test("escapeHtml escapes every HTML-sensitive character", () => {
   assert.equal(
@@ -42,7 +46,7 @@ test("renderEmail escapes user-controlled HTML and omits unsafe links", () => {
         reservation_url: "javascript:alert(1)",
       },
     },
-  ]);
+  ], UNSUBSCRIBE_URL);
 
   assert.match(
     rendered.html,
@@ -51,6 +55,27 @@ test("renderEmail escapes user-controlled HTML and omits unsafe links", () => {
   assert.match(rendered.html, /A&amp;B &lt;Court&gt;/);
   assert.doesNotMatch(rendered.html, /javascript:/);
   assert.doesNotMatch(rendered.html, /<img/);
+  assert.match(
+    rendered.text,
+    /メール通知を停止する: https:\/\/project\.supabase\.co/,
+  );
+  assert.match(rendered.html, />メール通知を停止する<\/a>/);
+});
+
+test("buildUnsubscribeUrl creates the canonical Edge Function URL", () => {
+  assert.equal(
+    buildUnsubscribeUrl(
+      "https://project.supabase.co/ignored",
+      UNSUBSCRIBE_TOKEN,
+    ),
+    UNSUBSCRIBE_URL,
+  );
+  assert.throws(() =>
+    buildUnsubscribeUrl("https://project.supabase.co", "bad")
+  );
+  assert.throws(() =>
+    buildUnsubscribeUrl("http://project.supabase.co", UNSUBSCRIBE_TOKEN)
+  );
 });
 
 test("classifyResendError follows retryable and permanent policy", () => {
@@ -120,23 +145,29 @@ test("buildResendPayload includes exact correlation tags", () => {
     "member@example.test",
     rendered,
     MESSAGE_ID.toUpperCase(),
+    UNSUBSCRIBE_URL,
   );
 
   assert.deepEqual(payload.tags, [
     { name: "tcw_source", value: "user_notification" },
     { name: "tcw_message_id", value: MESSAGE_ID },
   ]);
+  assert.deepEqual(payload.headers, {
+    "List-Unsubscribe": `<${UNSUBSCRIBE_URL}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  });
   assert.throws(() =>
     buildResendPayload(
       "notify@example.test",
       "member@example.test",
       rendered,
       "not-a-uuid",
+      UNSUBSCRIBE_URL,
     )
   );
 });
 
-test("payload fingerprint includes tags and remains deterministic", async () => {
+test("retry reuses the exact provider JSON and payload fingerprint", async () => {
   const rendered = {
     subject: "Court available",
     text: "Court available",
@@ -148,20 +179,24 @@ test("payload fingerprint includes tags and remains deterministic", async () => 
     "member@example.test",
     rendered,
     MESSAGE_ID,
+    UNSUBSCRIBE_URL,
   ));
   const repeatedPayload = JSON.stringify(buildResendPayload(
     "notify@example.test",
     "member@example.test",
     rendered,
     MESSAGE_ID,
+    UNSUBSCRIBE_URL,
   ));
   const otherMessagePayload = JSON.stringify(buildResendPayload(
     "notify@example.test",
     "member@example.test",
     rendered,
     "223e4567-e89b-42d3-a456-426614174000",
+    UNSUBSCRIBE_URL,
   ));
 
+  assert.match(firstPayload, /"headers":\{/);
   assert.match(firstPayload, /"tags":\[/);
   assert.equal(firstPayload, repeatedPayload);
   assert.equal(

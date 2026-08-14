@@ -24,7 +24,7 @@
 | Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得してPages表示する。Phase 0で導入したlegacy管理者LINE経路はPhase 3.4.3で退役済み |
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページを提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
-| Phase 3 | 進行中 | automatic enqueue/dispatchを本番確認済み。Phase 3.5a delivery feedbackのコード実装済み、production rollout待ち |
+| Phase 3 | 進行中 | automatic enqueue/dispatchを本番確認済み。Phase 3.5a delivery feedbackはproduction反映・canary確認済みで、24〜48時間のaggregate観察中 |
 | Phase 4 | 計画 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
@@ -364,8 +364,9 @@ Actionsで照合を実行するには、Repository Variable
   - Phase 3.4.4: scheduler reliability hardening。3.4.4aでlive runのsource checkoutをbranch headへ固定し、3.4.4bでGitHub native scheduleをprimaryとしたまま、45分以上qualifying runが生成されない場合だけSupabase DB/Edge Function/Cronからfallback dispatchするwatchdogを実装した。production rolloutは `off -> observe 24〜48h -> dispatch` とし、Cron jobはmigration外で手動作成する。
 - Phase 3.5: Resend delivery feedbackと配信停止を段階導入する。
   - Phase 3.5a: sender correlation tag、service-role専用event RPC、Svix署名検証Edge Function、sent/delayed/delivered/failed/bounced/complained/suppressedの状態反映、pgTAP/Deno/pytest、runbookのコード実装は完了した。at-least-onceは`svix-id`、out-of-orderはprovider event `created_at`と固定priorityで処理する。raw payloadと宛先情報は保存・ログ出力しない。
-  - Phase 3.5a production rollout: 未実施。migration push、Function secret/deploy、Resend Dashboard webhook、sender tag切替、canaryは[Phase 3 Resend Webhook Runbook](./PHASE3_RESEND_WEBHOOK.md)に従って人間が行う。sender切替直前のin-flight guardが0件でない場合はdeployしない。
-  - Phase 3.5b以降: 本人向けunsubscribe導線、運用上の再有効化、保持期間cleanupを別スコープで扱う。
+  - Phase 3.5a production rollout: migration適用、webhook deploy、missing/invalid signatureの`401`、実署名付き外部Authメールの`ignored_unmatched 200`、通知canaryのsent→delivered、provider eventsのsent/delivered、duplicate replayの`stored_event_count=0`まで確認済み。現在はcanary後24〜48時間のaggregate観察中である。
+  - Phase 3.5b: 本人向け日本語unsubscribe導線、RFC 8058 one-click、private tokenとservice-role RPC、再有効化時rotation、provider suppressionを解除しないAccount UIのコード実装とテストを完了した。production rolloutは未実施で、[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)のin-flight guardが0行でない限りsenderをdeployしない。
+  - Phase 3.5c: message、provider event、delivery itemの90日retention cleanupを別スコープで実装する。Phase 3.5bには含めない。
 
 管理者も一般会員と同じ通知条件、配信queue、email workerを利用する。管理者専用のメール通知経路は作らない。
 

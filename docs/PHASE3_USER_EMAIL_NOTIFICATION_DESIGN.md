@@ -11,7 +11,7 @@ Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引
 - enum、制約、index、RLS、revoke/grant
 - migration SQLを対象とする静的pytest
 
-上記はPhase 3.1の最初のqueue migrationの境界である。その後、Phase 3.2〜3.4でResend送信workerと自動enqueue/dispatchを実装し、Phase 3.5aで署名済みwebhookのdelivery feedbackを追加した。いずれのforward migrationもリポジトリへの追加だけではSupabase環境へ自動適用されない。
+上記はPhase 3.1の最初のqueue migrationの境界である。その後、Phase 3.2〜3.4でResend送信workerと自動enqueue/dispatchを実装し、Phase 3.5aで署名済みwebhookのdelivery feedback、Phase 3.5bで本人向けunsubscribeと再有効化token rotationを追加した。Phase 3.5aはproduction反映・canary確認済みで、現在24〜48時間のaggregate観察中である。Phase 3.5bはコード実装済み・production未反映である。forward migrationはリポジトリへの追加だけではSupabase環境へ自動適用されない。
 
 ## 2. 確定方針
 
@@ -22,7 +22,7 @@ Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引
 5. enqueueとclaimはservice_role専用とし、`PUBLIC`、`anon`、`authenticated`には実行させない。
 6. 配信内部テーブルはRLSを有効にし、ブラウザroleへpolicyもテーブル権限も付与しない。
 7. GitHub Actions、標準出力、例外、ログへ利用者ID、メールアドレス、通知条件ID、provider応答本文を出さない。
-8. 配信データの保存期間は初期90日とする。削除処理自体は今回実装しない。
+8. 配信データの保存期間は初期90日とし、削除処理はPhase 3.5cとして別実装する。
 
 ## 3. 全体構成
 
@@ -67,6 +67,8 @@ Phase 3.1時点の後続責務を含め、現在はqueue、worker、Resend API�
 | claim RPC | 配信資格の再確認、不適格messageのcancel、競合しないbounded batchの取得とprocessingへの遷移 | メールアドレス、通知条件ID |
 | 送信worker | claimされた`user_id`を使う送信直前のAuth Admin API宛先解決、本文生成、correlation tagと冪等性keyを伴うResend API呼び出し | secret、利用者ID、宛先のログ出力 |
 | Resend webhook | raw bodyのSvix署名検証、event重複排除、provider時刻順の状態反映 | raw webhook payload、宛先、sender、subjectの保存・ログ出力 |
+| unsubscribe token/RPC | 利用者単位のcapability発行、message単位の取得、本人opt-out、再有効化時rotation | browser roleのdirect token参照、provider suppression理由の上書き |
+| unsubscribe Edge Function | side effectなしの確認GET、人間POST、RFC 8058 one-click POST、generic response | token、query、利用者ID、メールアドレスのログ出力 |
 | Supabase Auth | メールアドレスの唯一の保存元 | notification public schemaへの複製 |
 
 claimは内部message ID、`user_id`、非個人の表示用itemsをservice_roleだけへ返す。送信Edge Functionは`user_id`をSupabase Auth Admin APIへ渡し、メールアドレスを送信直前だけメモリ上で解決する。メールアドレスはclaim結果、public schema、永続payloadへ含めない。`user_id`も通常ログ、GitHub Actions、Artifactへ出さない。
@@ -138,9 +140,13 @@ messageとdelivery itemを関連付ける。複合外部キーに`user_id`と`ch
 
 ### 5.5 `notification_provider_events`
 
-将来のResend webhookを正規化して保存するための器だけを先に定義する。provider、provider event ID、必須のprovider message ID、event type、provider status、発生時刻を保持し、`(provider, provider_event_id)`でwebhook再送を重複排除する。`(message_id, provider_message_id)`の複合外部キーにより、eventのprovider message IDが同じ`notification_messages`行に記録された値と一致することをDBで保証する。
+Resend webhookを正規化して保存する。provider、provider event ID、必須のprovider message ID、event type、provider status、発生時刻を保持し、`(provider, provider_event_id)`でwebhook再送を重複排除する。`(message_id, provider_message_id)`の複合外部キーにより、eventのprovider message IDが同じ`notification_messages`行に記録された値と一致することをDBで保証する。
 
-raw webhook payload、header、メールアドレスは保存しない。今回webhook endpointと署名検証は実装しないため、このテーブルへ通常の運用データはまだ書き込まれない。
+raw webhook payload、header、メールアドレスは保存しない。Phase 3.5a production rollout後は署名済みwebhookから正規化したeventだけを書き込む。
+
+### 5.6 `notification_email_unsubscribe_tokens`
+
+`user_id`を主キー、ランダムな`token`をunique capabilityとして保持する。既存preferenceはforward migrationでbackfillし、新規preference作成triggerでも自動作成する。RLSを有効にしたうえで`PUBLIC`、`anon`、`authenticated`、`service_role`を含む直接table privilegeを剥奪し、security-definer RPCだけを境界とする。メールアドレスは保持しない。
 
 ## 6. enqueue RPC
 
@@ -204,7 +210,7 @@ Phase 2候補の集約
 
 ## 9. RLSと権限
 
-5テーブルすべてでRLSを有効にし、テーブル権限を`PUBLIC`、`anon`、`authenticated`からいったん剥奪する。
+配信テーブルすべてでRLSを有効にし、テーブル権限を`PUBLIC`、`anon`、`authenticated`からいったん剥奪する。unsubscribe token tableは`service_role`の直接権限も剥奪する。
 
 `notification_email_preferences`だけは、activeな`authenticated`本人にSELECTと`is_enabled`列のUPDATEを許可する。利用者IDの変更、行作成・削除、配信停止理由の変更は許可しない。
 
@@ -230,7 +236,7 @@ payloadはDBで許可field、JSON型、文字列長、全体サイズを制約�
 
 利用者別通知の送信providerはResendである。Phase 1のSupabase Auth Custom SMTPと同じ送信ドメインを利用できるが、認証メールと空き通知ではAPI key、テンプレート、メトリクス、配信停止の責務を分離する。
 
-送信workerは、claimで受け取った`user_id`を使うSupabase Auth Admin APIでの送信直前の宛先解決、テンプレート生成、冪等性keyを伴うResend API呼び出し、acceptedまたはretry状態への原子的更新を担当する。payloadには`tcw_source=user_notification`と`tcw_message_id=<notification_messages.id>`のtagを含める。tagを含むexact serialized JSONを従来どおりHMAC fingerprintとPOST bodyの双方に再利用する。API keyとservice role keyはEdge Function secretなどサーバー側だけに置く。
+送信workerは、claimで受け取った`user_id`を使うSupabase Auth Admin APIでの送信直前の宛先解決、messageに対応するunsubscribe token取得、テンプレート生成、冪等性keyを伴うResend API呼び出し、acceptedまたはretry状態への原子的更新を担当する。payloadには`tcw_source=user_notification`と`tcw_message_id=<notification_messages.id>`のtag、footer停止リンク、`List-Unsubscribe`、`List-Unsubscribe-Post`を含める。これらを含むexact serialized JSONをHMAC fingerprintとPOST bodyの双方に再利用する。通常retryでは同じtokenを使う。`processing`または`retry_wait`がある間は再有効化とrotationを拒否し、まだfingerprintがない`pending`だけならrotation後のtokenで初回payloadを構築する。API keyとservice role keyはEdge Function secretなどサーバー側だけに置く。
 
 Phase 3.5a webhookは、最初に取得したraw bodyを固定版Svix libraryで検証し、`svix-id`で重複排除する。相関は既存`provider_message_id`を最優先し、見つからない場合だけ自アプリtagのUUIDへfallbackする。tag fallbackでprovider IDをbindできるのは送信前authorizationが`provider_first_attempt_at`と`provider_payload_fingerprint`を記録済みの場合だけである。provider eventはarrival順ではなくtop-level `created_at`の降順、同時刻は`complained > suppressed > bounced > failed > delivered > delivery_delayed > sent`の固定priorityでmessage状態へ反映する。署名不正、未知event、message不一致でも内部IDやbodyをログへ出さず、raw bodyをDBへ保存しない。HTTP契約とrolloutは[Phase 3 Resend Webhook Runbook](./PHASE3_RESEND_WEBHOOK.md)を正とする。
 
@@ -241,7 +247,9 @@ Phase 3.5a webhookは、最初に取得したraw bodyを固定版Svix libraryで
 - 利用者操作: `is_enabled = false`にし、以後のenqueue対象から外す。
 - provider・運用判断: `is_enabled = false`、正規化した`disabled_reason`、`disabled_at`を設定する。
 
-bounce、complaint、provider suppressionを正常記録した場合は、webhook RPCがmessageを対応statusへ更新し、設定も`resend_bounced`、`resend_complained`、`resend_suppressed`の理由で無効化する。`email.failed`と`delivery_delayed`は無効化せず、`delivered`も自動再有効化しない。`disabled_reason`はauthenticated利用者が直接変更できず、理由が残る間は`is_enabled = true`にできない。再開条件、本人確認、管理導線は後続PRで定義する。
+bounce、complaint、provider suppressionを正常記録した場合は、webhook RPCがmessageを対応statusへ更新し、設定も`resend_bounced`、`resend_complained`、`resend_suppressed`の理由で無効化する。`email.failed`と`delivery_delayed`は無効化せず、`delivered`も自動再有効化しない。`disabled_reason`はauthenticated利用者が直接変更できず、理由が残る間は`is_enabled = true`にできない。Account UIもprovider suppressionを説明してtoggleを無効化し、Resend Suppression Listを自動解除しない。
+
+本人opt-outは、メール内tokenを受けたservice-role RPCが`disabled_reason IS NULL`の場合だけ`is_enabled = false`、`disabled_at = now()`へ変更する。valid、既にOFF、unknown tokenは同じgeneric outcomeにし、provider reasonとtimestampは上書きしない。確認GETは存在確認だけでside effectを起こさず、人間POSTとRFC 8058 POSTだけが停止する。本人が通常のOFF状態からONへ戻すとき、emailの`processing`または`retry_wait`が1件でもあれば更新全体を例外でrollbackし、preference、token、messageを変更しない。0件の場合だけtokenをrotationする。`pending`は再有効化を妨げず、cancelしない。provider suppression状態で拒否された更新でもrotationしない。
 
 配信停止は新規enqueueを止めるだけでなく、claim RPCが未送信のpending、retry_wait、lease切れprocessing messageを配信資格の再確認時に`cancelled`へ移す。現在lease中のprocessing messageは別workerとの競合を避けるためclaimから更新せず、送信workerもAuth宛先解決の直前に配信資格を再確認する。
 
@@ -257,28 +265,27 @@ delivery itemは重複防止の正なので、単純にmessageと同時削除し
 
 実メール送信はサーバー側機能フラグ`ENABLE_USER_EMAIL_NOTIFICATIONS`を既定falseとして導入済みである。利用者ごとの`is_enabled`だけで全体送信を開始しない。
 
-Phase 3.1で想定した段階的導入は、Phase 3.4.2まで完了した。Phase 3.5aのproduction rolloutはsender payload fingerprintを変えるため、[Phase 3 Resend Webhook Runbook](./PHASE3_RESEND_WEBHOOK.md)のin-flight guardを必須とし、migration、webhook Function、Resend Dashboard、sender tag、canaryを別手順で進める。
+Phase 3.1で想定した段階的導入は、Phase 3.4.2まで完了した。Phase 3.5aはproduction反映・canary確認済みで、現在24〜48時間のaggregate観察中である。Phase 3.5bもsender payload fingerprintを変えるため、[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)のin-flight guardを必須とし、migration、unsubscribe Function、sender、UI、canaryを段階的に進める。
 
-1. 今回: schemaと静的テストだけをレビューする。外部Supabaseへ適用しない。
-2. 検証環境: migrationを適用し、架空利用者でRLS、重複、並行claim、lease満了を実DB検証する。
-3. シャドーenqueue: 実宛先を解決せず、集計件数とqueue状態だけを監視する。
-4. allowlist送信: 内部テスト利用者だけでResend、webhook、配信停止を確認する。
-5. 少量展開: global flagと利用者opt-inの両方がtrueの場合だけ送る。
-6. 一般展開: bounce率、complaint率、retry滞留、provider上限を監視しながら拡大する。
+1. Phase 3.5b code review: forward migration、sender、Edge Function、Account UI、テストだけを変更し、production操作は分離する。
+2. 検証環境: token backfill・rotation、RLS/privilege、generic response、exact provider JSON、UI suppression表示を確認する。
+3. production準備: migrationと公開Functionを先に反映し、generic GET/POSTと非PIIログを確認する。
+4. sender切替: `retry_wait=0`を事前確認し、`ENABLE_USER_EMAIL_NOTIFICATIONS=false`で新規claimを止め、`processing`/`retry_wait`が0行であることを再確認してからfooter/header追加済みsenderをdeployする。0行でなければdeployを中止し、`retry_wait`発生時はflagを戻して通常workerでdrain後にやり直す。deploy後はflagを戻してcanaryを行う。rollbackも同じmaintenance boundaryを使う。
+5. canary: 内部テスト利用者1名で受信、header、確認GET、human POST、RFC 8058 POST、再有効化rotationを確認する。
+6. 一般監視: unsubscribe率、Function 5xx、retry滞留、bounce/complaint/suppressionを集計で監視する。
 
 GitHub Actionsへservice role keyや利用者別候補を渡す構成を採用する場合も、secretは必要stepだけへ渡し、候補詳細をファイル、Artifact、job summary、ログへ出さない。今回GitHub Actionsは変更しない。
 
-## 15. Phase 3.5aの対象外
+## 15. Phase 3.5bの対象外
 
-- production migration push、Edge Function deploy、Resend Dashboard webhook作成、secret設定、本番canary
-- sender payload変更のproduction反映
-- 利用者向けunsubscribe linkと運用者向け再有効化導線
-- cleanup jobと90日削除処理
+- Phase 3.5bのproduction migration push、Edge Function deploy、sender deploy、Pages deploy、本番canary
+- Resend Suppression Listの自動解除とbounce/complaint後の自動再有効化
+- cleanup jobと90日削除処理（Phase 3.5c）
 - GitHub Actions、Repository Variables、Secrets、workflowの変更
 - scheduler watchdog、Cron、既存production configの変更
 - 利用者別LINE通知（Phase 4）
 
-production rolloutはコード実装とは分離し、runbookに従って人間が行う。特に既にfingerprintを持つ`processing`/`retry_wait`が存在する状態でsender tagを切り替えない。
+production rolloutはコード実装とは分離し、runbookに従って人間が行う。特に既にfingerprintを持つ`processing`/`retry_wait`が存在する状態でunsubscribe footer/headerを追加したsenderへ切り替えない。
 
 ## 16. migration適用前後の確認
 
@@ -291,7 +298,7 @@ production rolloutはコード実装とは分離し、runbookに従って人間�
 - inactive、通知OFF、停止理由あり、通知条件無効の候補がenqueueされない。
 - 複数workerのclaimが同じmessageを返さず、lease満了後は再取得できる。
 - enqueue結果、DBエラー、platform logへ個人情報や個別条件IDが出ない。claimの`user_id`はservice-role workerだけが宛先解決に使用し、ログへ出ない。
-- Phase 3.5a RPCがservice_role以外から実行できず、direct table writeもできない。
+- Phase 3.5a/3.5b RPCがservice_role以外から実行できず、unsubscribe token tableはservice roleを含めdirect accessできない。
 - webhookの重複、順序逆転、direct/tag correlation、conflict/unmatchedが期待どおりで、raw payloadとPIIがDB・ログ・レスポンスへ出ない。
 
 本番適用済みmigrationを編集・再実行しない。修正は新しいtimestampの前方migrationで行う。本番データがある状態での安易なdropやtruncateは行わず、バックアップ、依存関係、復元手順を先に確認する。

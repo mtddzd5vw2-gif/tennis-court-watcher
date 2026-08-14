@@ -429,6 +429,10 @@ h3 {
   margin: 1.5rem 0 0.5rem;
 }
 
+.email-notification-preference {
+  margin-bottom: 1.5rem;
+}
+
 .notification-toolbar h2,
 .notification-toolbar p {
   margin-block: 0;

@@ -16,6 +16,11 @@
     [6, "土曜日"],
     [7, "日曜日"],
   ]);
+  const PROVIDER_SUPPRESSION_REASONS = new Set([
+    "resend_bounced",
+    "resend_complained",
+    "resend_suppressed",
+  ]);
 
   const loading = document.querySelector("[data-notification-loading]");
   const membershipRequired = document.querySelector(
@@ -23,6 +28,15 @@
   );
   const content = document.querySelector("[data-notification-content]");
   const status = document.querySelector("[data-notification-status]");
+  const emailPreferenceToggle = document.querySelector(
+    "[data-email-notification-toggle]",
+  );
+  const emailPreferenceGuidance = document.querySelector(
+    "[data-email-notification-guidance]",
+  );
+  const emailPreferenceStatus = document.querySelector(
+    "[data-email-notification-status]",
+  );
   const newRuleButton = document.querySelector("[data-new-rule]");
   const ruleCount = document.querySelector("[data-notification-rule-count]");
   const ruleLimitGuidance = document.querySelector(
@@ -59,6 +73,8 @@
   let rules = [];
   let ruleFacilities = [];
   let ruleWeekdays = [];
+  let emailPreference = null;
+  let emailPreferenceBusy = false;
   let editingRuleId = null;
   let formOpen = false;
   let formSubmitting = false;
@@ -146,6 +162,34 @@
     for (const button of ruleList.querySelectorAll("[data-rule-action]")) {
       button.disabled = disableListActions;
     }
+    if (emailPreferenceToggle) {
+      emailPreferenceToggle.disabled =
+        emailPreferenceBusy ||
+        (emailPreference !== null &&
+          PROVIDER_SUPPRESSION_REASONS.has(emailPreference.disabled_reason));
+    }
+  }
+
+  function renderEmailPreference() {
+    if (!emailPreference || !emailPreferenceToggle) {
+      return;
+    }
+
+    const providerSuppressed = PROVIDER_SUPPRESSION_REASONS.has(
+      emailPreference.disabled_reason,
+    );
+    emailPreferenceToggle.checked = emailPreference.is_enabled === true;
+    if (providerSuppressed) {
+      emailPreferenceGuidance.textContent =
+        "配信エラーのためメール通知を停止しています。安全確認が必要なため、この画面から再開できません。";
+    } else if (emailPreference.is_enabled) {
+      emailPreferenceGuidance.textContent =
+        "メール通知は有効です。不要になった場合はいつでも停止できます。";
+    } else {
+      emailPreferenceGuidance.textContent =
+        "メール通知は停止中です。受け取りを再開すると、過去の停止リンクは無効になります。";
+    }
+    updateActionAvailability();
   }
 
   function setMutationBusy(isBusy) {
@@ -540,6 +584,7 @@
       rulesResult,
       ruleFacilitiesResult,
       ruleWeekdaysResult,
+      emailPreferenceResult,
     ] = await Promise.all([
       client
         .from("facilities")
@@ -562,13 +607,19 @@
         .from("notification_rule_weekdays")
         .select("rule_id,weekday")
         .eq("user_id", userId),
+      client
+        .from("notification_email_preferences")
+        .select("is_enabled,disabled_reason,disabled_at,updated_at")
+        .eq("user_id", userId)
+        .single(),
     ]);
 
     if (
       facilitiesResult.error ||
       rulesResult.error ||
       ruleFacilitiesResult.error ||
-      ruleWeekdaysResult.error
+      ruleWeekdaysResult.error ||
+      emailPreferenceResult.error
     ) {
       throw new Error("notification_data_unavailable");
     }
@@ -577,8 +628,62 @@
     rules = rulesResult.data || [];
     ruleFacilities = ruleFacilitiesResult.data || [];
     ruleWeekdays = ruleWeekdaysResult.data || [];
+    emailPreference = emailPreferenceResult.data;
     renderFacilityOptions();
     renderRules();
+    renderEmailPreference();
+  }
+
+  async function updateEmailPreference() {
+    if (!emailPreference || emailPreferenceBusy) {
+      return;
+    }
+    if (PROVIDER_SUPPRESSION_REASONS.has(emailPreference.disabled_reason)) {
+      emailPreferenceToggle.checked = false;
+      renderEmailPreference();
+      return;
+    }
+
+    const nextEnabled = emailPreferenceToggle.checked;
+    emailPreferenceBusy = true;
+    updateActionAvailability();
+    setStatus(
+      emailPreferenceStatus,
+      nextEnabled ? "メール通知を有効にしています…" : "メール通知を停止しています…",
+    );
+
+    let result;
+    try {
+      result = await client
+        .from("notification_email_preferences")
+        .update({ is_enabled: nextEnabled })
+        .eq("user_id", userId)
+        .select("is_enabled,disabled_reason,disabled_at,updated_at")
+        .single();
+    } catch {
+      result = null;
+    }
+
+    if (!result || result.error || !result.data) {
+      emailPreferenceToggle.checked = emailPreference.is_enabled === true;
+      setStatus(
+        emailPreferenceStatus,
+        "メール通知の設定を変更できませんでした。状態を再読み込みしてから、もう一度お試しください。",
+        "error",
+      );
+      emailPreferenceBusy = false;
+      updateActionAvailability();
+      return;
+    }
+
+    emailPreference = result.data;
+    emailPreferenceBusy = false;
+    renderEmailPreference();
+    setStatus(
+      emailPreferenceStatus,
+      nextEnabled ? "メール通知を有効にしました。" : "メール通知を停止しました。",
+      "success",
+    );
   }
 
   async function refreshNotificationDataAfterMutation(
@@ -855,6 +960,9 @@
   cancelButton.addEventListener("click", closeRuleForm);
   form.addEventListener("submit", (event) => {
     void saveRule(event);
+  });
+  emailPreferenceToggle.addEventListener("change", () => {
+    void updateEmailPreference();
   });
 
   void start();

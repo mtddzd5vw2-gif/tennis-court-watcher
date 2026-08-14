@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 import {
   buildResendPayload,
+  buildUnsubscribeUrl,
   classifyResendError,
   deterministicIdempotencyKey,
   EmailNotificationItem,
@@ -133,6 +134,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     await processClaimedMessage(
       supabase,
       candidate,
+      supabaseUrl,
       resendApiKey,
       resendFrom,
       payloadHmacKey,
@@ -146,12 +148,31 @@ Deno.serve(async (request: Request): Promise<Response> => {
 async function processClaimedMessage(
   supabase: SupabaseWorkerClient,
   message: ClaimedMessage,
+  supabaseUrl: string,
   resendApiKey: string,
   resendFrom: string,
   payloadHmacKey: string,
   metrics: Metrics,
 ): Promise<void> {
   try {
+    const { data: unsubscribeToken, error: unsubscribeTokenError } =
+      await supabase.rpc("get_email_unsubscribe_token_for_message", {
+        p_message_id: message.message_id,
+      });
+    if (
+      unsubscribeTokenError !== null ||
+      typeof unsubscribeToken !== "string"
+    ) {
+      await recordFailure(
+        supabase,
+        message,
+        "worker_internal_error",
+        metrics,
+      );
+      return;
+    }
+    const unsubscribeUrl = buildUnsubscribeUrl(supabaseUrl, unsubscribeToken);
+
     const { data: authData, error: authError } = await supabase.auth.admin
       .getUserById(message.user_id);
     if (authError !== null) {
@@ -175,12 +196,13 @@ async function processClaimedMessage(
       return;
     }
 
-    const rendered = renderEmail(message.items);
+    const rendered = renderEmail(message.items, unsubscribeUrl);
     const providerPayload = buildResendPayload(
       resendFrom,
       recipient,
       rendered,
       message.message_id,
+      unsubscribeUrl,
     );
     // Reuse this exact serialized string for both fingerprinting and fetch.
     const serializedPayload = JSON.stringify(providerPayload);
