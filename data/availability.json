@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-08-14T23:53:22+09:00",
+  "generated_at": "2026-08-15T00:03:53+09:00",
   "window": {
     "days": 15,
     "start": "08:00",
@@ -20,214 +20,9 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:52:49+09:00",
+          "checked_at": "2026-08-15T00:03:17+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-          "availability": [
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１",
-              "start_time": "08:30",
-              "end_time": "10:00",
-              "duration_minutes": 90,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "47ab9ce18f155df23837b8f2"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１",
-              "start_time": "12:00",
-              "end_time": "13:00",
-              "duration_minutes": 60,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "37131ff1a0491ed14bcea1c3"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート２",
-              "start_time": "08:30",
-              "end_time": "13:00",
-              "duration_minutes": 270,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "d5d68d5554b00c605dafcff1"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート３",
-              "start_time": "11:00",
-              "end_time": "13:00",
-              "duration_minutes": 120,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "eb86a7e303eca45e92992962"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート４",
-              "start_time": "11:00",
-              "end_time": "13:00",
-              "duration_minutes": 120,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "ef9413fda384e644b39d514e"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート５",
-              "start_time": "11:00",
-              "end_time": "13:00",
-              "duration_minutes": 120,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "fdfd4801cd05bf366087ee21"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート６",
-              "start_time": "08:30",
-              "end_time": "13:00",
-              "duration_minutes": 270,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "3fd0a4cea632887991ba6bfe"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート７",
-              "start_time": "08:30",
-              "end_time": "13:00",
-              "duration_minutes": 270,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "e49171a5855038559c4222a1"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート８",
-              "start_time": "11:00",
-              "end_time": "13:00",
-              "duration_minutes": 120,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "31ca8dda577953adceb95a0b"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート９",
-              "start_time": "11:00",
-              "end_time": "13:00",
-              "duration_minutes": 120,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "f858ab05c42559d56d130a1c"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１２",
-              "start_time": "08:30",
-              "end_time": "09:30",
-              "duration_minutes": 60,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "9ac38522d9d3d6fbfcc1060a"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１２",
-              "start_time": "11:30",
-              "end_time": "13:00",
-              "duration_minutes": 90,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "f042ec38202c7761dcc8ac2a"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１３",
-              "start_time": "08:30",
-              "end_time": "13:00",
-              "duration_minutes": 270,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "c0bbf2f543dcd1022df75ff3"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１４",
-              "start_time": "08:30",
-              "end_time": "13:00",
-              "duration_minutes": 270,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "ce85a8c3c6eade68e351f535"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１５",
-              "start_time": "11:00",
-              "end_time": "13:00",
-              "duration_minutes": 120,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "b2eaecbfb6a0342dfd2dda9b"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１６",
-              "start_time": "08:30",
-              "end_time": "09:30",
-              "duration_minutes": 60,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "f0ee3b795847e9a2ea034986"
-            },
-            {
-              "facility_id": "kamoike-prefectural",
-              "facility_name": "鴨池県営テニスコート",
-              "date": "2026-08-15",
-              "court_name": "コート１６",
-              "start_time": "11:30",
-              "end_time": "13:00",
-              "duration_minutes": 90,
-              "status": "available",
-              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-15&category_id=483&area_id=289",
-              "slot_id": "8d306b4571e71a47b7e2c737"
-            }
-          ]
+          "availability": []
         },
         {
           "date": "2026-08-16",
@@ -236,7 +31,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:52:52+09:00",
+          "checked_at": "2026-08-15T00:03:19+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-16&category_id=483&area_id=289",
           "availability": [
             {
@@ -356,7 +151,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:52:55+09:00",
+          "checked_at": "2026-08-15T00:03:22+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-22&category_id=483&area_id=289",
           "availability": [
             {
@@ -392,7 +187,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:52:58+09:00",
+          "checked_at": "2026-08-15T00:03:25+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-23&category_id=483&area_id=289",
           "availability": [
             {
@@ -456,6 +251,42 @@
               "slot_id": "091190aed12bf0c477740b9d"
             }
           ]
+        },
+        {
+          "date": "2026-08-29",
+          "day_type": "weekend",
+          "holiday_name": null,
+          "status": "success",
+          "error_type": null,
+          "error_message": null,
+          "checked_at": "2026-08-15T00:03:27+09:00",
+          "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-29&category_id=483&area_id=289",
+          "availability": [
+            {
+              "facility_id": "kamoike-prefectural",
+              "facility_name": "鴨池県営テニスコート",
+              "date": "2026-08-29",
+              "court_name": "コート８",
+              "start_time": "11:00",
+              "end_time": "13:00",
+              "duration_minutes": 120,
+              "status": "available",
+              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-29&category_id=483&area_id=289",
+              "slot_id": "8be5cb801589405cb99f6de0"
+            },
+            {
+              "facility_id": "kamoike-prefectural",
+              "facility_name": "鴨池県営テニスコート",
+              "date": "2026-08-29",
+              "court_name": "コート９",
+              "start_time": "12:00",
+              "end_time": "13:00",
+              "duration_minutes": 60,
+              "status": "available",
+              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-29&category_id=483&area_id=289",
+              "slot_id": "3dd9dfa7068385b867489805"
+            }
+          ]
         }
       ]
     },
@@ -470,7 +301,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:02+09:00",
+          "checked_at": "2026-08-15T00:03:30+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -481,7 +312,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:05+09:00",
+          "checked_at": "2026-08-15T00:03:33+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -517,7 +348,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:07+09:00",
+          "checked_at": "2026-08-15T00:03:35+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -528,7 +359,18 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:10+09:00",
+          "checked_at": "2026-08-15T00:03:37+09:00",
+          "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
+          "availability": []
+        },
+        {
+          "date": "2026-08-29",
+          "day_type": "weekend",
+          "holiday_name": null,
+          "status": "success",
+          "error_type": null,
+          "error_message": null,
+          "checked_at": "2026-08-15T00:03:39+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
@@ -545,7 +387,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:12+09:00",
+          "checked_at": "2026-08-15T00:03:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -629,7 +471,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:14+09:00",
+          "checked_at": "2026-08-15T00:03:43+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -640,7 +482,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:17+09:00",
+          "checked_at": "2026-08-15T00:03:46+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -651,7 +493,18 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-14T23:53:19+09:00",
+          "checked_at": "2026-08-15T00:03:48+09:00",
+          "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
+          "availability": []
+        },
+        {
+          "date": "2026-08-29",
+          "day_type": "weekend",
+          "holiday_name": null,
+          "status": "success",
+          "error_type": null,
+          "error_message": null,
+          "checked_at": "2026-08-15T00:03:51+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
