@@ -93,8 +93,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
   const resendFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
-  const payloadHmacKey =
-    Deno.env.get("EMAIL_DELIVERY_PAYLOAD_HMAC_KEY") ?? "";
+  const payloadHmacKey = Deno.env.get("EMAIL_DELIVERY_PAYLOAD_HMAC_KEY") ?? "";
   if (
     supabaseUrl.length === 0 ||
     serviceRoleKey.length === 0 ||
@@ -153,8 +152,8 @@ async function processClaimedMessage(
   metrics: Metrics,
 ): Promise<void> {
   try {
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.getUserById(message.user_id);
+    const { data: authData, error: authError } = await supabase.auth.admin
+      .getUserById(message.user_id);
     if (authError !== null) {
       await recordFailure(
         supabase,
@@ -181,6 +180,7 @@ async function processClaimedMessage(
       resendFrom,
       recipient,
       rendered,
+      message.message_id,
     );
     // Reuse this exact serialized string for both fingerprinting and fetch.
     const serializedPayload = JSON.stringify(providerPayload);
@@ -189,8 +189,8 @@ async function processClaimedMessage(
       payloadHmacKey,
     );
 
-    const { data: authorization, error: authorizationError } =
-      await supabase.rpc("authorize_email_message_send", {
+    const { data: authorization, error: authorizationError } = await supabase
+      .rpc("authorize_email_message_send", {
         p_message_id: message.message_id,
         p_locked_until: message.locked_until,
         p_provider_payload_fingerprint: payloadFingerprint,

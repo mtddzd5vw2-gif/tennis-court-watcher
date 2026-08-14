@@ -1,4 +1,4 @@
-# Phase 3 利用者別メール通知キュー基盤設計
+# Phase 3 利用者別メール通知キュー・配信ライフサイクル設計
 
 ## 1. 目的と今回の境界
 
@@ -11,7 +11,7 @@ Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引
 - enum、制約、index、RLS、revoke/grant
 - migration SQLを対象とする静的pytest
 
-Resend API呼び出し、Supabase Edge Function、webhook受信、GitHub Actions変更、実メール送信は今回の対象外である。このmigrationをリポジトリへ追加しても、Supabase環境へは自動適用されない。
+上記はPhase 3.1の最初のqueue migrationの境界である。その後、Phase 3.2〜3.4でResend送信workerと自動enqueue/dispatchを実装し、Phase 3.5aで署名済みwebhookのdelivery feedbackを追加した。いずれのforward migrationもリポジトリへの追加だけではSupabase環境へ自動適用されない。
 
 ## 2. 確定方針
 
@@ -34,9 +34,9 @@ flowchart LR
     D["delivery items<br>重複排除台帳"]
     Q["messages / message items<br>配信キュー"]
     C["claim RPC<br>SKIP LOCKED"]
-    F["将来のEdge Function<br>送信worker"]
-    R["Resend API<br>今回未実装"]
-    W["将来のwebhook"]
+    F["Edge Function<br>送信worker"]
+    R["Resend API"]
+    W["署名検証webhook"]
     P["provider events"]
     U["Supabase Auth<br>メールアドレスの正"]
     L["既存管理者向けLINE通知"]
@@ -48,13 +48,13 @@ flowchart LR
     E --> Q
     Q --> C
     C --> F
-    F -.->|"送信直前だけ宛先を解決"| U
-    F -.-> R
-    R -.-> W
-    W -.-> P
+    F -->|"送信直前だけ宛先を解決"| U
+    F --> R
+    R --> W
+    W --> P
 ```
 
-実線は今回のDB境界、破線は後続PRの責務を表す。Phase 3の構築・canary中は既存LINE経路と利用者別メール経路を分離し、一方の障害や変更を他方へ波及させない。本番安定後は既存管理者LINE経路を廃止し、管理者も通常の利用者別通知pipelineへ移行する。Phase 4でも管理者専用LINE経路は再構築せず、会員共通LINE notification基盤を使用する。
+Phase 3.1時点の後続責務を含め、現在はqueue、worker、Resend API、webhook、provider eventまでが実装済みである。Phase 0のlegacy管理者LINE経路はPhase 3.4.3で退役し、管理者も通常の利用者別通知pipelineを利用する。Phase 4でも管理者専用LINE経路は再構築せず、会員共通LINE notification基盤を使用する。
 
 ## 4. 責務分離
 
@@ -65,11 +65,11 @@ flowchart LR
 | delivery item | 利用者・channel・安定slot IDの一度限り台帳、送信表示用snapshot | 宛先、認証情報 |
 | message | claim、lease、試行回数、再試行、provider結果の状態管理 | 宛先、providerのraw応答 |
 | claim RPC | 配信資格の再確認、不適格messageのcancel、競合しないbounded batchの取得とprocessingへの遷移 | メールアドレス、通知条件ID |
-| 将来の送信worker | claimされた`user_id`を使う送信直前のAuth Admin API宛先解決、本文生成、Resend API呼び出し | secret、利用者ID、宛先のログ出力 |
-| 将来のwebhook | 署名検証、event重複排除、正規化した状態反映 | raw webhook payloadの恒久保存 |
+| 送信worker | claimされた`user_id`を使う送信直前のAuth Admin API宛先解決、本文生成、correlation tagと冪等性keyを伴うResend API呼び出し | secret、利用者ID、宛先のログ出力 |
+| Resend webhook | raw bodyのSvix署名検証、event重複排除、provider時刻順の状態反映 | raw webhook payload、宛先、sender、subjectの保存・ログ出力 |
 | Supabase Auth | メールアドレスの唯一の保存元 | notification public schemaへの複製 |
 
-claimは内部message ID、`user_id`、非個人の表示用itemsをservice_roleだけへ返す。後続のEdge Functionは`user_id`をSupabase Auth Admin APIへ渡し、メールアドレスを送信直前だけメモリ上で解決する。メールアドレスはclaim結果、public schema、永続payloadへ含めない。`user_id`も通常ログ、GitHub Actions、Artifactへ出さない。Edge FunctionとAuth Admin API呼び出し自体は今回追加しない。
+claimは内部message ID、`user_id`、非個人の表示用itemsをservice_roleだけへ返す。送信Edge Functionは`user_id`をSupabase Auth Admin APIへ渡し、メールアドレスを送信直前だけメモリ上で解決する。メールアドレスはclaim結果、public schema、永続payloadへ含めない。`user_id`も通常ログ、GitHub Actions、Artifactへ出さない。
 
 ## 5. データモデル
 
@@ -226,13 +226,13 @@ enqueueは利用者IDと通知条件IDを入力・内部処理に必要とする
 
 payloadはDBで許可field、JSON型、文字列長、全体サイズを制約する。メールアドレス形式の正規表現CHECKは、誤検知と回避の両方があるため使用しない。`last_error_message`にも同様の正規表現CHECKを設けず、trusted writerがprovider応答から許可済みのerror codeと匿名化済みの一般文だけを構築する。DB制約を個人情報検出の正とせず、producerのallowlist生成、送信直前だけのAuth参照、非ログ化を正とする。
 
-## 11. Resendとwebhookの後続設計
+## 11. Resend送信とdelivery feedback
 
-利用者別通知の送信provider候補はResendである。Phase 1のSupabase Auth Custom SMTPと同じ送信ドメインを利用できるが、認証メールと空き通知ではAPI key、テンプレート、メトリクス、配信停止の責務を分離する。
+利用者別通知の送信providerはResendである。Phase 1のSupabase Auth Custom SMTPと同じ送信ドメインを利用できるが、認証メールと空き通知ではAPI key、テンプレート、メトリクス、配信停止の責務を分離する。
 
-後続の送信workerは、claimで受け取った`user_id`を使うSupabase Auth Admin APIでの送信直前の宛先解決、テンプレート生成、冪等性keyを伴うResend API呼び出し、acceptedまたはretry状態への原子的更新を担当する。API keyとservice role keyはEdge Function secretなどサーバー側だけに置く。
+送信workerは、claimで受け取った`user_id`を使うSupabase Auth Admin APIでの送信直前の宛先解決、テンプレート生成、冪等性keyを伴うResend API呼び出し、acceptedまたはretry状態への原子的更新を担当する。payloadには`tcw_source=user_notification`と`tcw_message_id=<notification_messages.id>`のtagを含める。tagを含むexact serialized JSONを従来どおりHMAC fingerprintとPOST bodyの双方に再利用する。API keyとservice role keyはEdge Function secretなどサーバー側だけに置く。
 
-後続のwebhookは、署名と許容時刻差を検証してからprovider event IDで重複排除する。accepted、delivered、bounced、complained、suppressedなどを正規化し、message状態と必要な配信停止を同一transactionで反映する。署名不正、未知event、message不一致では内部IDやbodyをログへ出さない。raw bodyをDBへ保存しない。
+Phase 3.5a webhookは、最初に取得したraw bodyを固定版Svix libraryで検証し、`svix-id`で重複排除する。相関は既存`provider_message_id`を最優先し、見つからない場合だけ自アプリtagのUUIDへfallbackする。tag fallbackでprovider IDをbindできるのは送信前authorizationが`provider_first_attempt_at`と`provider_payload_fingerprint`を記録済みの場合だけである。provider eventはarrival順ではなくtop-level `created_at`の降順、同時刻は`complained > suppressed > bounced > failed > delivered > delivery_delayed > sent`の固定priorityでmessage状態へ反映する。署名不正、未知event、message不一致でも内部IDやbodyをログへ出さず、raw bodyをDBへ保存しない。HTTP契約とrolloutは[Phase 3 Resend Webhook Runbook](./PHASE3_RESEND_WEBHOOK.md)を正とする。
 
 ## 12. 配信停止
 
@@ -241,7 +241,7 @@ payloadはDBで許可field、JSON型、文字列長、全体サイズを制約�
 - 利用者操作: `is_enabled = false`にし、以後のenqueue対象から外す。
 - provider・運用判断: `is_enabled = false`、正規化した`disabled_reason`、`disabled_at`を設定する。
 
-bounce、complaint、provider suppressionを受けた場合は、将来のwebhook処理でmessageを対応statusへ更新し、設定も無効化する。`disabled_reason`はauthenticated利用者が直接変更できず、理由が残る間は`is_enabled = true`にできない。再開条件、本人確認、管理導線は後続PRで定義する。
+bounce、complaint、provider suppressionを正常記録した場合は、webhook RPCがmessageを対応statusへ更新し、設定も`resend_bounced`、`resend_complained`、`resend_suppressed`の理由で無効化する。`email.failed`と`delivery_delayed`は無効化せず、`delivered`も自動再有効化しない。`disabled_reason`はauthenticated利用者が直接変更できず、理由が残る間は`is_enabled = true`にできない。再開条件、本人確認、管理導線は後続PRで定義する。
 
 配信停止は新規enqueueを止めるだけでなく、claim RPCが未送信のpending、retry_wait、lease切れprocessing messageを配信資格の再確認時に`cancelled`へ移す。現在lease中のprocessing messageは別workerとの競合を避けるためclaimから更新せず、送信workerもAuth宛先解決の直前に配信資格を再確認する。
 
@@ -255,9 +255,9 @@ delivery itemは重複防止の正なので、単純にmessageと同時削除し
 
 ## 14. 機能フラグと段階的導入
 
-実メール送信は、将来のサーバー側機能フラグ`ENABLE_USER_EMAIL_NOTIFICATIONS`を既定falseとして導入する。利用者ごとの`is_enabled`だけで全体送信を開始しない。
+実メール送信はサーバー側機能フラグ`ENABLE_USER_EMAIL_NOTIFICATIONS`を既定falseとして導入済みである。利用者ごとの`is_enabled`だけで全体送信を開始しない。
 
-段階的導入は次を想定する。
+Phase 3.1で想定した段階的導入は、Phase 3.4.2まで完了した。Phase 3.5aのproduction rolloutはsender payload fingerprintを変えるため、[Phase 3 Resend Webhook Runbook](./PHASE3_RESEND_WEBHOOK.md)のin-flight guardを必須とし、migration、webhook Function、Resend Dashboard、sender tag、canaryを別手順で進める。
 
 1. 今回: schemaと静的テストだけをレビューする。外部Supabaseへ適用しない。
 2. 検証環境: migrationを適用し、架空利用者でRLS、重複、並行claim、lease満了を実DB検証する。
@@ -268,19 +268,17 @@ delivery itemは重複防止の正なので、単純にmessageと同時削除し
 
 GitHub Actionsへservice role keyや利用者別候補を渡す構成を採用する場合も、secretは必要stepだけへ渡し、候補詳細をファイル、Artifact、job summary、ログへ出さない。今回GitHub Actionsは変更しない。
 
-## 15. 今回の対象外
+## 15. Phase 3.5aの対象外
 
-- Resend API client、API key設定、テンプレート、実メール送信
-- Supabase Edge Function、送信worker、完了・失敗更新RPC
-- webhook endpoint、署名検証、event反映処理
-- bounce・complaint・suppression時の自動配信停止処理
+- production migration push、Edge Function deploy、Resend Dashboard webhook作成、secret設定、本番canary
+- sender payload変更のproduction反映
+- 利用者向けunsubscribe linkと運用者向け再有効化導線
 - cleanup jobと90日削除処理
 - GitHub Actions、Repository Variables、Secrets、workflowの変更
-- Phase 0の`data/notification-state.json`、`scripts/scrape.py`、既存管理者向けLINE通知の変更
+- scheduler watchdog、Cron、既存production configの変更
 - 利用者別LINE通知（Phase 4）
-- Supabase環境へのmigration適用
 
-この対象外指定はキュー基盤PRで既存LINEコードを変更しないという安全境界であり、legacy経路を恒久維持する方針ではない。停止・削除はPhase 3の自動配信が本番で安定した後の移行作業として行う。
+production rolloutはコード実装とは分離し、runbookに従って人間が行う。特に既にfingerprintを持つ`processing`/`retry_wait`が存在する状態でsender tagを切り替えない。
 
 ## 16. migration適用前後の確認
 
@@ -293,5 +291,7 @@ GitHub Actionsへservice role keyや利用者別候補を渡す構成を採用�
 - inactive、通知OFF、停止理由あり、通知条件無効の候補がenqueueされない。
 - 複数workerのclaimが同じmessageを返さず、lease満了後は再取得できる。
 - enqueue結果、DBエラー、platform logへ個人情報や個別条件IDが出ない。claimの`user_id`はservice-role workerだけが宛先解決に使用し、ログへ出ない。
+- Phase 3.5a RPCがservice_role以外から実行できず、direct table writeもできない。
+- webhookの重複、順序逆転、direct/tag correlation、conflict/unmatchedが期待どおりで、raw payloadとPIIがDB・ログ・レスポンスへ出ない。
 
 本番適用済みmigrationを編集・再実行しない。修正は新しいtimestampの前方migrationで行う。本番データがある状態での安易なdropやtruncateは行わず、バックアップ、依存関係、復元手順を先に確認する。

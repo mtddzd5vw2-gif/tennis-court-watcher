@@ -388,6 +388,10 @@ deno_version = 2
 [functions.dispatch-email-notifications]
 verify_jwt = false
 
+# Resend authenticates webhook requests with Svix signatures over the raw body.
+[functions.resend-email-webhook]
+verify_jwt = false
+
 # Authentication is implemented inside the scheduler watchdog with a
 # dedicated high-entropy secret. Browser-originated requests are rejected.
 [functions.update-availability-watchdog]
