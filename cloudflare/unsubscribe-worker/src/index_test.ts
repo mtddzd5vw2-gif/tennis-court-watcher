@@ -66,7 +66,7 @@ test("GET returns generic Japanese HTML without an upstream side effect", async 
   assert.equal(upstreamCalls, 0);
 });
 
-test("human POST sends the token only in the upstream form body", async () => {
+test("human POST sends only the custom secret header and body token", async () => {
   let observedUrl = "";
   let observedInit: RequestInit | undefined;
   const handler = createUnsubscribeWorkerHandler(async (input, init) => {
@@ -95,7 +95,11 @@ test("human POST sends the token only in the upstream form body", async () => {
   );
   assert.equal(
     new Headers(observedInit?.headers).get("authorization"),
-    `Bearer ${WORKER_SECRET}`,
+    null,
+  );
+  assert.equal(
+    new Headers(observedInit?.headers).get("x-unsubscribe-worker-secret"),
+    WORKER_SECRET,
   );
   const upstreamBody = String(observedInit?.body);
   assert.deepEqual(

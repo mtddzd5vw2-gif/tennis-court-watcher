@@ -44,8 +44,8 @@ export function createEmailUnsubscribeHandler(
     if (!validWorkerSecret(workerSecret)) {
       return finish(configurationErrorResponse(), "configuration_error");
     }
-    const suppliedSecret = readBearerToken(
-      request.headers.get("authorization"),
+    const suppliedSecret = request.headers.get(
+      "x-unsubscribe-worker-secret",
     );
     if (
       suppliedSecret === null ||
@@ -181,14 +181,6 @@ function normalizedToken(value: string): string | null {
 function validWorkerSecret(value: string): boolean {
   return !/\s/u.test(value) &&
     new TextEncoder().encode(value).byteLength >= MINIMUM_SECRET_BYTES;
-}
-
-function readBearerToken(value: string | null): string | null {
-  if (value === null) {
-    return null;
-  }
-  const match = /^Bearer ([^\s]+)$/.exec(value);
-  return match?.[1] ?? null;
 }
 
 async function secretsEqual(left: string, right: string): Promise<boolean> {

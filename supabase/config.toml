@@ -393,8 +393,8 @@ verify_jwt = false
 verify_jwt = false
 
 # Body-only bridge authenticated inside the Function with the dedicated
-# UNSUBSCRIBE_WORKER_SECRET. Browser GET and query-token contracts are
-# intentionally unsupported.
+# X-Unsubscribe-Worker-Secret header. Browser GET and query-token contracts
+# are intentionally unsupported.
 [functions.unsubscribe-email-notifications]
 verify_jwt = false
 

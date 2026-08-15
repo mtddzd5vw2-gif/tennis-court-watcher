@@ -89,8 +89,8 @@ export function createUnsubscribeWorkerHandler(
       upstreamResponse = await upstreamFetch(upstreamUrl, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${workerSecret}`,
           "content-type": "application/x-www-form-urlencoded",
+          "X-Unsubscribe-Worker-Secret": workerSecret,
         },
         body: new URLSearchParams({ interaction, token }).toString(),
         redirect: "manual",

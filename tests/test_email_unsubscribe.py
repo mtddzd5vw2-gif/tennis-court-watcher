@@ -150,7 +150,8 @@ def test_cloudflare_worker_is_the_safe_public_capability_endpoint() -> None:
     assert "await reader.cancel()" in worker
     assert 'form.get("List-Unsubscribe") === "One-Click"' in worker
     assert "body: new URLSearchParams({ interaction, token }).toString()" in worker
-    assert 'authorization: `Bearer ${workerSecret}`' in worker
+    assert '"X-Unsubscribe-Worker-Secret": workerSecret' in worker
+    assert "authorization" not in worker.lower()
     assert "UNSUBSCRIBE_WORKER_SECRET: string" in worker
     assert "new TextEncoder().encode(value).byteLength" in worker
     assert '"https://oocqyeariwuppkeaeioh.supabase.co/functions/v1/' in worker
@@ -161,7 +162,7 @@ def test_cloudflare_worker_is_the_safe_public_capability_endpoint() -> None:
         assert forbidden not in worker
     for behavior in (
         "GET returns generic Japanese HTML without an upstream side effect",
-        "human POST sends the token only in the upstream form body",
+        "human POST sends only the custom secret header and body token",
         "RFC 8058 POST becomes body-only one_click upstream and returns blank 200",
         "malformed path tokens have the same generic successes without upstream calls",
         "POST body is bounded before any upstream request",
@@ -180,7 +181,9 @@ def test_supabase_function_is_body_only_internal_post() -> None:
     assert "[functions.unsubscribe-email-notifications]\nverify_jwt = false" in config
     assert 'request.method !== "POST"' in helpers
     assert 'dependencies.getEnv("UNSUBSCRIBE_WORKER_SECRET")' in helpers
-    assert 'request.headers.get("authorization")' in helpers
+    assert '"x-unsubscribe-worker-secret"' in helpers
+    assert 'request.headers.get("authorization")' not in helpers
+    assert "readBearerToken" not in helpers
     assert 'crypto.subtle.digest("SHA-256"' in helpers
     assert "difference |= leftBytes[index] ^ rightBytes[index]" in helpers
     assert "unauthorizedResponse()" in helpers
@@ -202,6 +205,9 @@ def test_supabase_function_is_body_only_internal_post() -> None:
     assert "console.log" not in index
     assert "request.url" not in index
     assert helpers.index('dependencies.getEnv("UNSUBSCRIBE_WORKER_SECRET")') < helpers.index(
+        'request.headers.get("content-type")'
+    )
+    assert helpers.index('"x-unsubscribe-worker-secret"') < helpers.index(
         'request.headers.get("content-type")'
     )
 
@@ -245,7 +251,8 @@ group by status;"""
     assert "invocation_logs=false" in runbook
     assert "fake token log boundary" in runbook
     assert "UNSUBSCRIBE_WORKER_SECRET" in runbook
-    assert "Authorization値" in runbook
+    assert "request.sb.apikey.authorization.prefix" in runbook
+    assert "旧secretを再利用しない" in runbook
     assert "workers.dev disabled" in runbook
     assert "Preview URLs disabled" in runbook
     assert "secret値をterminal output、docs、chatへ出さない" in runbook
