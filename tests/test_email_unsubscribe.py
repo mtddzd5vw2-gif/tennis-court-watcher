@@ -250,6 +250,12 @@ group by status;"""
     assert "Cloudflare Worker deploy + custom domain" in runbook
     assert "invocation_logs=false" in runbook
     assert "fake token log boundary" in runbook
+    assert "credential/PII boundary" in runbook
+    assert "application log boundary" in runbook
+    assert "provider-edge URI boundary" in runbook
+    assert "provider-edge trust boundary" in runbook
+    assert "Cloudflare Security Analytics" in runbook
+    assert "`/u/<opaque-uuid>`" in runbook
     assert "UNSUBSCRIBE_WORKER_SECRET" in runbook
     assert "request.sb.apikey.authorization.prefix" in runbook
     assert "旧secretを再利用しない" in runbook
