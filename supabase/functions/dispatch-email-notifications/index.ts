@@ -203,7 +203,7 @@ async function processClaimedMessage(
       return;
     }
 
-    const rendered = renderEmail(message.items, unsubscribeUrl);
+    const rendered = renderEmail(message.items);
     const providerPayload = buildResendPayload(
       resendFrom,
       recipient,

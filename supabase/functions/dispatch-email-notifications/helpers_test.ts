@@ -46,7 +46,7 @@ test("renderEmail escapes user-controlled HTML and omits unsafe links", () => {
         reservation_url: "javascript:alert(1)",
       },
     },
-  ], UNSUBSCRIBE_URL);
+  ]);
 
   assert.match(
     rendered.html,
@@ -57,9 +57,17 @@ test("renderEmail escapes user-controlled HTML and omits unsafe links", () => {
   assert.doesNotMatch(rendered.html, /<img/);
   assert.match(
     rendered.text,
-    /メール通知を停止する: https:\/\/unsubscribe\.tenniscourtwatcher\.com\/u\//,
+    /メール通知設定を開く: https:\/\/mtddzd5vw2-gif\.github\.io\/tennis-court-watcher\/account\/notifications\.html#email-notification-settings/,
   );
-  assert.match(rendered.html, />メール通知を停止する<\/a>/);
+  assert.match(rendered.html, />メール通知設定を開く<\/a>/);
+  assert.doesNotMatch(
+    rendered.text,
+    /unsubscribe\.tenniscourtwatcher\.com\/u\//,
+  );
+  assert.doesNotMatch(
+    rendered.html,
+    /unsubscribe\.tenniscourtwatcher\.com\/u\//,
+  );
 });
 
 test("buildUnsubscribeUrl creates the canonical public Worker URL", () => {

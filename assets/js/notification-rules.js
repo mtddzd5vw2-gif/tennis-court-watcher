@@ -634,6 +634,40 @@
     renderEmailPreference();
   }
 
+  async function refreshEmailPreferenceFromServer() {
+    if (!client || !userId || emailPreferenceBusy) {
+      return;
+    }
+
+    let result;
+    try {
+      result = await client
+        .from("notification_email_preferences")
+        .select("is_enabled,disabled_reason,disabled_at,updated_at")
+        .eq("user_id", userId)
+        .single();
+    } catch {
+      result = null;
+    }
+
+    if (!result || result.error || !result.data) {
+      return;
+    }
+
+    emailPreference = result.data;
+    renderEmailPreference();
+  }
+
+  function scrollToEmailPreferenceIfRequested() {
+    if (window.location.hash !== "#email-notification-settings") {
+      return;
+    }
+
+    document
+      .getElementById("email-notification-settings")
+      ?.scrollIntoView({ block: "start" });
+  }
+
   async function updateEmailPreference() {
     if (!emailPreference || emailPreferenceBusy) {
       return;
@@ -947,6 +981,7 @@
       await loadNotificationData();
       loading.hidden = true;
       content.hidden = false;
+      scrollToEmailPreferenceIfRequested();
     } catch {
       setStatus(
         loading,
@@ -963,6 +998,18 @@
   });
   emailPreferenceToggle.addEventListener("change", () => {
     void updateEmailPreference();
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      void refreshEmailPreferenceFromServer();
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      void refreshEmailPreferenceFromServer();
+    }
   });
 
   void start();

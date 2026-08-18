@@ -34,7 +34,12 @@ Cloudflare Workerからbody-only POSTする版のproduction fake token log bound
 ## 2. architectureとcredential境界
 
 ```text
-email footer / List-Unsubscribe
+email footer
+  -> https://mtddzd5vw2-gif.github.io/tennis-court-watcher/account/notifications.html#email-notification-settings
+  -> authenticated Account UI
+  -> notification_email_preferences
+
+List-Unsubscribe / List-Unsubscribe-Post
   -> https://unsubscribe.tenniscourtwatcher.com/u/<opaque-uuid>
   -> Cloudflare Worker
        GET: generic confirmation HTML、DB問い合わせなし、side effectなし
@@ -153,7 +158,15 @@ EMAIL_UNSUBSCRIBE_PUBLIC_BASE_URL=https://unsubscribe.tenniscourtwatcher.com
 https://unsubscribe.tenniscourtwatcher.com/u/<token>
 ```
 
-本文末尾のtext/html双方とResend headersは同じURLを使用する。
+人間向け本文のtext/html footerにはcapability tokenを含めず、Account UIのメール通知設定へリンクする。
+
+本文リンク:
+
+```text
+https://mtddzd5vw2-gif.github.io/tennis-court-watcher/account/notifications.html#email-notification-settings
+```
+
+RFC 8058用のcapability URLはResend headersだけに使用する。
 
 ```json
 {
@@ -164,7 +177,7 @@ https://unsubscribe.tenniscourtwatcher.com/u/<token>
 }
 ```
 
-footer、headers、token、correlation tagsを含むexact provider JSONを一度だけserializeし、その同じ文字列をHMAC payload fingerprintとResend POST bodyの双方に使う。通常retryでは利用者tokenとpublic base URLが変わらないためJSONも変わらない。`processing`または`retry_wait`がある間は再有効化とtoken rotationを拒否するため、fingerprint済みmessageのpayloadは変わらない。`pending`はまだfingerprintが確定していないため、rotation後のtokenで初回payloadを構築する。
+Account UI footer、RFC 8058 headers、token、correlation tagsを含むexact provider JSONを一度だけserializeし、その同じ文字列をHMAC payload fingerprintとResend POST bodyの双方に使う。通常retryでは利用者tokenとpublic base URLが変わらないためJSONも変わらない。`processing`または`retry_wait`がある間は再有効化とtoken rotationを拒否するため、fingerprint済みmessageのpayloadは変わらない。`pending`はまだfingerprintが確定していないため、rotation後のtokenで初回payloadを構築する。
 
 token、unsubscribe URL、path、query string、`user_id`、メールアドレス、provider request bodyは通常ログへ出さない。
 
@@ -176,6 +189,8 @@ token、unsubscribe URL、path、query string、`user_id`、メールアドレ�
 - provider suppression reasonあり: toggleを無効化し、「配信エラーのためメール通知を停止しています。安全確認が必要なため、この画面から再開できません。」と表示する。
 - browser queryは`is_enabled`、`disabled_reason`、timestampの参照だけとし、更新payloadは`is_enabled`だけにする。
 - Resend Suppression Listを自動解除せず、利用者へ`disabled_reason`更新権限を追加しない。
+- email footerからは`#email-notification-settings`へ直接遷移し、本文にunsubscribe capability tokenを含めない。
+- BFCache復帰またはbrowserがforegroundへ戻った場合はpreferenceを再取得し、古いtoggle状態を表示し続けない。
 
 ## 8. ローカル検証
 
@@ -234,8 +249,8 @@ production migrationは適用済みであり、新しいDB migrationはない。
 10. `EMAIL_UNSUBSCRIBE_PUBLIC_BASE_URL=https://unsubscribe.tenniscourtwatcher.com`を設定したfooter/header版`dispatch-email-notifications`をdeployする。scheduler watchdog、GitHub workflow、Repository Variables、他のSecretsは変更しない。
 11. `ENABLE_USER_EMAIL_NOTIFICATIONS`をmaintenance前の値へ戻す。
 12. 必要ならAccount UIを含むPages Artifactを通常の既存手順で反映する。
-13. 内部test user 1名へ1通だけcanary送信し、日本語footer、exact 2 headers、同一public URL、両headerをcoverする有効なDKIM署名、Resend accepted、webhook sent/deliveredを確認する。
-14. canaryのWorker GETで通知が変化しないこと、人間POSTでOFFになること、再有効化でtokenが変わり旧linkがno-opになることを確認する。
+13. 内部test user 1名へ1通だけcanary送信し、日本語footerがAccount UI設定画面を指して本文にtokenを含まないこと、exact 2 headers、両headerをcoverする有効なDKIM署名、Resend accepted、webhook sent/deliveredを確認する。
+14. footerからAccount UIへ遷移して最新preferenceが表示されることを確認する。Worker GETで通知が変化しないこと、直接human POSTでOFFになること、再有効化でtokenが変わり旧tokenがno-opになることを確認する。
 15. 別canaryでRFC 8058形式POSTがredirectなしの空`200`でOFFになり、replayが同じgeneric successになることを確認する。
 16. canaryでも同じcredential/PII boundary、application log boundary、provider-edge URI boundaryを再確認し、その後24〜48時間、Function/Worker 5xx、sender retry、unsubscribe件数、bounce/complaint/suppression、provider payload変更エラーをaggregateで監視する。
 

@@ -54,6 +54,8 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRODUCTION_UNSUBSCRIBE_PUBLIC_ORIGIN =
   "https://unsubscribe.tenniscourtwatcher.com";
+const PRODUCTION_NOTIFICATION_SETTINGS_URL =
+  "https://mtddzd5vw2-gif.github.io/tennis-court-watcher/account/notifications.html#email-notification-settings";
 
 export function escapeHtml(value: string): string {
   return value
@@ -228,14 +230,9 @@ export function extractResendMessageId(value: unknown): string | null {
 
 export function renderEmail(
   items: EmailNotificationItem[],
-  unsubscribeUrl: string,
 ): RenderedEmail {
   if (items.length === 0) {
     throw new Error("At least one notification item is required.");
-  }
-  const safeUnsubscribeUrl = validUnsubscribeUrl(unsubscribeUrl);
-  if (safeUnsubscribeUrl === null) {
-    throw new Error("Invalid unsubscribe URL.");
   }
 
   const subject =
@@ -291,14 +288,14 @@ export function renderEmail(
   textParts.push(
     "空き状況は変わることがあります。予約ページで最新状況をご確認ください。",
     "",
-    `メール通知を停止する: ${safeUnsubscribeUrl}`,
+    `メール通知設定を開く: ${PRODUCTION_NOTIFICATION_SETTINGS_URL}`,
   );
-  const escapedUnsubscribeUrl = escapeHtml(safeUnsubscribeUrl);
+  const escapedSettingsUrl = escapeHtml(PRODUCTION_NOTIFICATION_SETTINGS_URL);
   htmlParts.push(
     "</ol>",
     "<p>空き状況は変わることがあります。予約ページで最新状況をご確認ください。</p>",
     "<hr>",
-    `<p><a href="${escapedUnsubscribeUrl}" rel="noopener noreferrer">メール通知を停止する</a></p>`,
+    `<p><a href="${escapedSettingsUrl}" rel="noopener noreferrer">メール通知設定を開く</a></p>`,
     "</body>",
     "</html>",
   );
