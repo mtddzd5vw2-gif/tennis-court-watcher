@@ -97,11 +97,16 @@ def test_reenable_blocks_inflight_work_and_only_rotates_without_it() -> None:
     assert "'pending'::public.notification_message_status" not in sql
 
 
-def test_sender_uses_footer_headers_and_one_exact_serialized_payload() -> None:
+def test_sender_separates_human_settings_link_from_rfc8058_headers() -> None:
     helpers = read(SENDER_HELPERS)
     index = read(SENDER_INDEX)
 
-    assert "メール通知を停止する" in helpers
+    assert "メール通知設定を開く" in helpers
+    assert "メール通知を停止する" not in helpers
+    assert (
+        "https://mtddzd5vw2-gif.github.io/tennis-court-watcher/"
+        "account/notifications.html#email-notification-settings"
+    ) in helpers
     assert '"List-Unsubscribe": `<${safeUnsubscribeUrl}>`' in helpers
     assert '"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"' in helpers
     assert '"get_email_unsubscribe_token_for_message"' in index
@@ -229,6 +234,11 @@ def test_account_ui_blocks_provider_suppression_without_mutating_reason() -> Non
     assert '.update({ is_enabled: nextEnabled })' in script
     assert "update({ disabled_reason" not in script
     assert "emailPreferenceToggle.disabled" in script
+    assert 'id="email-notification-settings"' in html
+    assert "refreshEmailPreferenceFromServer" in script
+    assert '"pageshow"' in script
+    assert '"visibilitychange"' in script
+    assert '"#email-notification-settings"' in script
 
 
 def test_runbook_contains_required_guard_and_scope_boundaries() -> None:
