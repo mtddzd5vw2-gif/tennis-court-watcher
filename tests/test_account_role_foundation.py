@@ -14,7 +14,7 @@ MIGRATION_PATH = (
 EXISTING_MIGRATIONS = tuple(
     path
     for path in (ROOT / "supabase/migrations").glob("*.sql")
-    if path != MIGRATION_PATH
+    if path.name < MIGRATION_PATH.name
 )
 
 

@@ -366,7 +366,7 @@ Actionsで照合を実行するには、Repository Variable
   - Phase 3.5a: sender correlation tag、service-role専用event RPC、Svix署名検証Edge Function、sent/delayed/delivered/failed/bounced/complained/suppressedの状態反映、pgTAP/Deno/pytest、runbookのコード実装は完了した。at-least-onceは`svix-id`、out-of-orderはprovider event `created_at`と固定priorityで処理する。raw payloadと宛先情報は保存・ログ出力しない。
   - Phase 3.5a production rollout: migration適用、webhook deploy、missing/invalid signatureの`401`、実署名付き外部Authメールの`ignored_unmatched 200`、通知canaryのsent→delivered、provider eventsのsent/delivered、duplicate replayの`stored_event_count=0`まで確認済み。24〜48時間のaggregate観察を継続し、完了時に異常status、retry滞留、bounce/complaint/suppressionを再確認する。
   - Phase 3.5b: production rolloutとacceptanceを2026-08-18に完了した。本文footerはAccount UI設定画面だけを指し、本文からunsubscribe capability tokenを除去した。synthetic canary 1件はaccepted→delivered、raw sourceで`List-Unsubscribe`と`List-Unsubscribe-Post`の独立headerを確認した。詳細は[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)を正とする。
-  - Phase 3.5c: message、provider event、delivery itemの90日retention cleanupを別スコープで実装する。Phase 3.5bには含めない。
+  - Phase 3.5c: 90日retention cleanupのmigration、service-role専用bounded RPC、pgTAP/pytest、production runbookを実装する。message単位でprovider event/message itemをcascade削除し、delivery itemは過去日・90日超・参照なしの場合だけ最後に削除する。production rolloutとcron作成はcode merge後に別途行う。詳細は[Phase 3 Retention Cleanup Runbook](./PHASE3_RETENTION_CLEANUP.md)を正とする。
 
 管理者も一般会員と同じ通知条件、配信queue、email workerを利用する。管理者専用のメール通知経路は作らない。
 
