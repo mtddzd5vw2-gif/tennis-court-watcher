@@ -275,3 +275,39 @@ production migrationは適用済みであり、新しいDB migrationはない。
 - <https://developers.cloudflare.com/workers/observability/logs/workers-logs/>
 - <https://resend.com/docs/api-reference/emails/send-email>
 - <https://resend.com/docs/dashboard/emails/add-unsubscribe-to-transactional-emails>
+
+## 12. Production acceptance 結果（2026-08-18）
+
+2026-08-17時点のproduction差分表とSection 10のrollout手順は、rollout前のhistorical snapshotとして残す。本節を2026-08-18時点の最新production acceptance結果とする。
+
+### rollout / recovery
+
+- maintenance boundaryで`processing`、`retry_wait`が0件であることを確認し、`ENABLE_USER_EMAIL_NOTIFICATIONS=false`で新規claimを停止した状態で新senderをdeployした。
+- Account UI / Pagesへ`#email-notification-settings`、BFCache / foreground復帰時のpreference再取得を反映した。
+- rollout後、Repository Variablesの`ENABLE_USER_EMAIL_ENQUEUE`と`ENABLE_USER_EMAIL_DISPATCH`、Supabaseの`ENABLE_USER_EMAIL_NOTIFICATIONS`を通常値`true`へ復旧した。
+- rollout中のmanual-live runで意図しないuser emailは発生しなかった。最終canaryではenqueueを一時停止し、synthetic message 1件だけをdispatch対象にした。
+
+### human-facing footer / Account UI
+
+- production UIでメール通知preferenceをOFFからONへ再有効化でき、DBでも`is_enabled=true`を確認した。
+- 新canaryの本文末尾が`メール通知設定を開く`であることを実受信メールで確認した。
+- footerからauthenticated Account UIのメール通知設定へ遷移することを確認した。
+- text/html本文および表示上に`unsubscribe.tenniscourtwatcher.com/u/<token>` capability URLが含まれないことを確認した。人間向け本文にはunsubscribe capabilityを持たせない設計をproductionで確認した。
+
+### RFC 8058 / delivery
+
+- synthetic canary 1件のdispatchは`claimed_count=1`、`accepted_count=1`、`retry_count=0`、`permanent_failure_count=0`、`cancelled_count=0`で完了した。
+- provider feedbackは`email.sent=1`、`email.delivered=1`で、messageは`delivered`へ到達した。
+- 実受信メールのraw sourceで、次の2本がDKIM `h=`名だけではなく独立したheaderとして存在することを確認した。
+
+```text
+List-Unsubscribe: <https://unsubscribe.tenniscourtwatcher.com/u/[redacted]>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+```
+
+- unsubscribe tokenはcapabilityであるため、production token値はrunbook、chat、通常ログへ記録しない。
+
+### acceptance判定
+
+
+Phase 3.5bのproduction acceptanceはPASSとし、実装・rollout・canary検証を完了とする。人間向け本文はAccount UI設定画面だけを指し、unsubscribe capabilityはRFC 8058 headersだけに限定する。以後は既存architectureを維持しながらaggregate monitoringを通常運用として継続する。Phase 3の次の実装scopeはPhase 3.5c retention cleanupとする。
