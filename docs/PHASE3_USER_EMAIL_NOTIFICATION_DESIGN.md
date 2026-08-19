@@ -11,7 +11,7 @@ Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引
 - enum、制約、index、RLS、revoke/grant
 - migration SQLを対象とする静的pytest
 
-上記はPhase 3.1の最初のqueue migrationの境界である。その後、Phase 3.2〜3.4でResend送信workerと自動enqueue/dispatchを実装し、Phase 3.5aで署名済みwebhookのdelivery feedback、Phase 3.5bで本人向けunsubscribeと再有効化token rotationを追加した。Phase 3.5aはproduction反映・canary確認済みで、現在24〜48時間のaggregate観察中である。Phase 3.5bはコード実装済み・production未反映である。forward migrationはリポジトリへの追加だけではSupabase環境へ自動適用されない。
+上記はPhase 3.1の最初のqueue migrationの境界である。その後、Phase 3.2〜3.4でResend送信workerと自動enqueue/dispatchを実装し、Phase 3.5aで署名済みwebhookのdelivery feedback、Phase 3.5bで本人向けunsubscribeと再有効化token rotation、Phase 3.5cで90日retention cleanupを追加した。2026-08-19までにPhase 3.5aのaggregate観察、Phase 3.5bのproduction acceptance、Phase 3.5cのproduction rolloutと初回cron成功を確認し、Phase 3を完了した。forward migrationはリポジトリへの追加だけではSupabase環境へ自動適用されない。
 
 ## 2. 確定方針
 
@@ -265,7 +265,7 @@ delivery itemは重複防止の正なので、単純にmessageと同時削除し
 
 実メール送信はサーバー側機能フラグ`ENABLE_USER_EMAIL_NOTIFICATIONS`を既定falseとして導入済みである。利用者ごとの`is_enabled`だけで全体送信を開始しない。
 
-Phase 3.1で想定した段階的導入は、Phase 3.4.2まで完了した。Phase 3.5aはproduction反映・canary確認済みで、現在24〜48時間のaggregate観察中である。Phase 3.5bもsender payload fingerprintを変えるため、[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)のin-flight guardを必須とし、migration、unsubscribe Function、sender、UI、canaryを段階的に進める。
+Phase 3.1で想定した段階的導入は、Phase 3.5cまでproduction rolloutを完了した。Phase 3.5aはaggregate観察まで完了し、Phase 3.5bも[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)のin-flight guardを使用してproduction acceptanceまで完了した。以下の手順はPhase 3.5b rolloutで使用した段階的導入手順として維持する。
 
 1. Phase 3.5b code review: forward migration、sender、Edge Function、Account UI、テストだけを変更し、production操作は分離する。
 2. 検証環境: token backfill・rotation、RLS/privilege、generic response、exact provider JSON、UI suppression表示を確認する。

@@ -4,7 +4,7 @@
 
 Resend APIが送信要求を受理した後の`sent`、`delivery_delayed`、`delivered`、`failed`、`bounced`、`complained`、`suppressed`を、署名済みwebhookから`notification_messages`と`notification_provider_events`へ反映する。Resend webhookはat-least-onceかつout-of-orderなので、`svix-id`をeventの冪等性key、top-level `created_at`をprovider順序の正とする。
 
-Phase 3.5aのコード、forward migration、pgTAP、Deno test、静的pytestは完了した。production反映とcanary確認も完了し、現在は手順10の完了条件であるcanary後24〜48時間のaggregate観察中である。本runbookは確認済みの認証境界とrollback guardの記録として維持する。Phase 3.5b unsubscribeのproduction手順は[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)へ分離する。
+Phase 3.5aのコード、forward migration、pgTAP、Deno test、静的pytest、production反映、canary、24時間超のaggregate観察まで完了した。2026-08-19に異常status、retry滞留、bounce、complaint、suppressionがないことを確認し、Phase 3.5aを完了した。本runbookは確認済みの認証境界とrollback guardの記録として維持する。Phase 3.5b unsubscribeのproduction手順は[Phase 3 Email Unsubscribe Runbook](./PHASE3_EMAIL_UNSUBSCRIBE.md)へ分離する。
 
 productionではmigration適用、webhook deploy、missing/invalid signatureの`401`、実署名付き外部Authメールの`ignored_unmatched 200`、通知canaryのsent→delivered、provider eventsのsent/delivered、duplicate replayの`stored_event_count=0`を確認済みである。
 
