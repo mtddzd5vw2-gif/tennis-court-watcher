@@ -128,16 +128,65 @@
           <h2 id="account-actions-title">アカウント操作</h2>
           <p class="muted">
             ログアウトは、このブラウザのセッションだけを終了します。
-            退会処理はまだ準備中です。
+            退会すると、アカウントと登録済みの通知条件などは削除され、元に戻せません。
           </p>
           <div class="button-row">
             <button class="button button--secondary" type="button" data-sign-out disabled>
               このブラウザからログアウト
             </button>
-            <button class="button button--danger" type="button" disabled>
-              退会する（準備中）
+            <button
+              class="button button--danger"
+              type="button"
+              data-delete-account-start
+              disabled
+            >
+              退会手続きを開く
             </button>
           </div>
+
+          <div data-delete-account-panel hidden>
+            <p>
+              <strong>退会すると、このアカウントは削除されます。</strong>
+            </p>
+            <p class="muted">
+              プロフィール、利用規約の同意履歴、通知条件、
+              メール通知に関連するアカウントデータも削除されます。
+              この操作は取り消せません。
+            </p>
+            <label class="consent" for="delete-account-consent">
+              <input
+                id="delete-account-consent"
+                type="checkbox"
+                data-delete-account-consent
+              >
+              <span>
+                アカウントと関連データが削除され、元に戻せないことを確認しました。
+              </span>
+            </label>
+            <div class="button-row">
+              <button
+                class="button button--danger"
+                type="button"
+                data-delete-account-confirm
+                disabled
+              >
+                退会を実行する
+              </button>
+              <button
+                class="button button--secondary"
+                type="button"
+                data-delete-account-cancel
+              >
+                キャンセル
+              </button>
+            </div>
+            <p
+              class="status-text"
+              data-delete-account-status
+              aria-live="polite"
+            ></p>
+          </div>
+
           <p class="status-text" data-action-status aria-live="polite"></p>
         </section>
       </div>

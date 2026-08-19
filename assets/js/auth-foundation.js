@@ -283,6 +283,12 @@
     const consentButton = document.querySelector("[data-accept-current-terms]");
     const consentStatus = document.querySelector("[data-terms-consent-status]");
     const logout = document.querySelector("[data-sign-out]");
+    const deleteStart = document.querySelector("[data-delete-account-start]");
+    const deletePanel = document.querySelector("[data-delete-account-panel]");
+    const deleteConsent = document.querySelector("[data-delete-account-consent]");
+    const deleteConfirm = document.querySelector("[data-delete-account-confirm]");
+    const deleteCancel = document.querySelector("[data-delete-account-cancel]");
+    const deleteStatus = document.querySelector("[data-delete-account-status]");
     const status = document.querySelector("[data-action-status]");
 
     let session;
@@ -311,6 +317,7 @@
         : "確認状態を取得できません";
     content.hidden = false;
     logout.disabled = false;
+    deleteStart.disabled = false;
 
     const renderTermsHistory = (acceptances) => {
       termsHistory.replaceChildren();
@@ -447,6 +454,80 @@
         setStatus(
           status,
           "ログアウトを完了できませんでした。時間をおいて、もう一度お試しください。",
+          "error",
+        );
+      }
+    });
+
+    let deletingAccount = false;
+
+    deleteStart.addEventListener("click", () => {
+      if (deletingAccount) {
+        return;
+      }
+      deletePanel.hidden = false;
+      deleteStart.disabled = true;
+      deleteConsent.checked = false;
+      deleteConfirm.disabled = true;
+      setStatus(deleteStatus, "");
+    });
+
+    deleteConsent.addEventListener("change", () => {
+      deleteConfirm.disabled =
+        deletingAccount || !deleteConsent.checked;
+    });
+
+    deleteCancel.addEventListener("click", () => {
+      if (deletingAccount) {
+        return;
+      }
+      deletePanel.hidden = true;
+      deleteConsent.checked = false;
+      deleteConfirm.disabled = true;
+      deleteStart.disabled = false;
+      setStatus(deleteStatus, "");
+    });
+
+    deleteConfirm.addEventListener("click", async () => {
+      if (deletingAccount || !deleteConsent.checked) {
+        return;
+      }
+
+      deletingAccount = true;
+      logout.disabled = true;
+      deleteConfirm.disabled = true;
+      deleteCancel.disabled = true;
+      setStatus(deleteStatus, "退会処理を実行しています…");
+
+      try {
+        const result = await client.functions.invoke("delete-account", {
+          body: {
+            confirmation: "delete-my-account",
+          },
+        });
+
+        if (result.error) {
+          throw new Error("account_deletion_failed");
+        }
+
+        clearPendingTermsAcceptance();
+        email.textContent = "";
+
+        try {
+          await client.auth.signOut({ scope: "local" });
+        } catch {
+          // The Auth user has already been deleted. Redirect regardless.
+        }
+
+        window.location.replace(LOGIN_PATH);
+      } catch {
+        deletingAccount = false;
+        logout.disabled = false;
+        deleteCancel.disabled = false;
+        deleteConfirm.disabled = !deleteConsent.checked;
+        setStatus(
+          deleteStatus,
+          "退会処理を完了できませんでした。時間をおいて、もう一度お試しください。",
           "error",
         );
       }

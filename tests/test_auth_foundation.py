@@ -156,6 +156,34 @@ window.supabase = {
           return { error: mock.signOutError ? { name: "AuthError" } : null };
         },
       },
+      functions: {
+        async invoke(name, options) {
+          const call = {
+            method: "functions.invoke",
+            name,
+            options,
+          };
+          window.__authCalls.push(call);
+          window.sessionStorage.setItem(
+            "mock-function-invoke",
+            JSON.stringify(call),
+          );
+          if (mock.deleteAccountError) {
+            return {
+              data: null,
+              error: { name: "FunctionsHttpError" },
+            };
+          }
+          if (name === "delete-account") {
+            delete mock.sessionEmail;
+            window.sessionStorage.setItem(
+              "mock-account-deleted",
+              "true",
+            );
+          }
+          return { data: null, error: null };
+        },
+      },
       from(table) {
         const call = { table, filters: [] };
         window.__dataCalls.push(call);
@@ -1088,7 +1116,8 @@ def test_account_checks_session_displays_email_and_signs_out(
 
     assert page.locator("[data-account-email]").inner_text() == "member@example.test"
     assert page.locator("[data-sign-out]").is_enabled()
-    assert "準備中" in page.locator("main").inner_text()
+    assert page.locator("[data-delete-account-start]").is_enabled()
+    assert page.locator("[data-delete-account-panel]").is_hidden()
 
     page.locator("[data-sign-out]").click()
     page.wait_for_url("http://pages.test/project/auth/login.html")
@@ -1100,6 +1129,84 @@ def test_account_checks_session_displays_email_and_signs_out(
     ) == {"scope": "local"}
     assert messages == []
 
+
+def test_account_deletion_requires_two_stage_confirmation_and_calls_edge_function(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {"sessionEmail": "member@example.test"},
+    )
+    page.locator("[data-account-content]:not([hidden])").wait_for()
+
+    start = page.locator("[data-delete-account-start]")
+    panel = page.locator("[data-delete-account-panel]")
+    consent = page.locator("[data-delete-account-consent]")
+    confirm = page.locator("[data-delete-account-confirm]")
+
+    assert panel.is_hidden()
+    start.click()
+    assert panel.is_visible()
+    assert confirm.is_disabled()
+
+    consent.check()
+    assert confirm.is_enabled()
+    confirm.click()
+
+    page.wait_for_url("http://pages.test/project/auth/login.html")
+    page.locator("[data-auth-form]:not([hidden])").wait_for()
+
+    function_call = page.evaluate(
+        'JSON.parse(window.sessionStorage.getItem("mock-function-invoke"))'
+    )
+    assert function_call == {
+        "method": "functions.invoke",
+        "name": "delete-account",
+        "options": {
+            "body": {
+                "confirmation": "delete-my-account",
+            },
+        },
+    }
+    serialized = json.dumps(function_call)
+    assert "user_id" not in serialized
+    assert "member@example.test" not in serialized
+    assert page.evaluate(
+        'window.sessionStorage.getItem("mock-account-deleted")'
+    ) == "true"
+    assert messages == []
+
+
+def test_account_deletion_failure_stays_signed_in_and_allows_retry(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {
+            "sessionEmail": "member@example.test",
+            "deleteAccountError": True,
+        },
+    )
+    page.locator("[data-account-content]:not([hidden])").wait_for()
+
+    page.locator("[data-delete-account-start]").click()
+    page.locator("[data-delete-account-consent]").check()
+    page.locator("[data-delete-account-confirm]").click()
+
+    error = page.locator(
+        '[data-delete-account-status][data-state="error"]'
+    )
+    error.wait_for()
+
+    assert page.url == "http://pages.test/project/account/index.html"
+    assert "退会処理を完了できませんでした" in error.inner_text()
+    assert page.locator("[data-delete-account-confirm]").is_enabled()
+    assert page.locator("[data-delete-account-cancel]").is_enabled()
+    assert page.locator("[data-sign-out]").is_enabled()
+    assert page.evaluate(
+        'window.sessionStorage.getItem("mock-account-deleted")'
+    ) is None
+    assert messages == []
 
 def test_pending_terms_account_requires_explicit_consent_and_refreshes(
     auth_page_loader,

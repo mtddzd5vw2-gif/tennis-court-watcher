@@ -382,6 +382,12 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Account deletion is browser-initiated and requires a valid Supabase Auth
+# user JWT at the Edge gateway. The Function also resolves the user from that
+# JWT and never accepts a user ID from the request body.
+[functions.delete-account]
+verify_jwt = true
+
 # Authentication is implemented inside this service-to-service worker with a
 # dedicated high-entropy secret. Gateway JWT verification is disabled so the
 # function does not depend on the legacy symmetric JWT secret.
