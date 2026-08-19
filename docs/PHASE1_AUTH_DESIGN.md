@@ -43,7 +43,7 @@
 - `.github/workflows/update-availability.yml` はpytest、スクレイピング、診断Artifact、2つのJSONの更新、GitHub Pagesデプロイを行う。
 - Pagesは既存トップと公開JSONに加え、`auth`、`account`、`legal`、`assets` を同じArtifactから配信する。
 - `tests/` はPhase 0回帰に加え、公開設定生成、必須変数、秘密鍵拒否、マジックリンク送信、PKCE callback、セッション確認、ログアウト、console非露出を検証する。
-- Supabase Authのブラウザ接続に加え、`supabase/migrations/20260804000000_create_member_profiles.sql` に会員データベース、RLS、規約同意RPCを実装済みである。外部Supabaseへの適用、退会Edge Function、通知設定はまだ実施していない。
+- Supabase Authのブラウザ接続に加え、会員データベース、RLS、規約同意RPC、通知設定、退会Edge Functionを実装済みである。退会Edge Functionの本番deployとproduction acceptanceは別途確認する。
 - `.gitignore` は `.env` 系、`assets/config/auth-config.js`、secret候補ファイル、Supabase CLI一時状態を除外する。
 
 ### 1.2 Phase 1で守る境界
@@ -92,7 +92,7 @@ Phase 1は次を不変条件とする。
 - `legal_document_versions`、`profiles`、追記専用の `terms_acceptances`、新規ユーザーtrigger、既存ユーザーbackfillをmigration化した。
 - 本人SELECTだけを許可するRLSと、現行規約をDBから取得して同意履歴とprofileを同一トランザクションで更新する引数なしRPCを実装した。
 - ログイン成功時の同意保留marker、callbackでの同意RPC、失敗時のマイページ再同意、profile・同意履歴表示を実装した。
-- 退会、通知設定、LINE連携、課金は今回の実装境界外である。
+- 退会は2026-08-19にEdge Functionと二段階確認UIまで実装した。Phase 4のLINE連携と課金は引き続き実装境界外である。
 
 ## 3. Phase 1の対象外
 

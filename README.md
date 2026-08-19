@@ -59,7 +59,7 @@
 
 PKCEのcode verifierはリンクを要求したブラウザ側に保存されるため、マジックリンクは原則としてログイン操作を開始した同じブラウザで開く必要があります。別端末・別ブラウザで開いて認証に失敗した場合は、利用するブラウザでログイン画面から再送してください。
 
-`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Function、Phase 4の利用者別LINE連携、課金は未実装で、退会ボタンは準備中のままです。
+`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装済みです。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。本番deployとproduction acceptanceは別途確認します。Phase 4の利用者別LINE連携と課金は未実装です。
 
 開発用の現行規約版は `2026-08-04-draft` です。一般公開前に正式な規約本文・版番号・発効日へ更新し、開発用版への同意済み利用者にも正式版への再同意を求めてください。
 
@@ -367,7 +367,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 
 ## 今後の作業
 
-1. 退会Edge FunctionをPhase 3とは別スコープで実装する
+1. 退会Edge Functionを本番deployし、production acceptanceを完了する
 2. Phase 4のLINE連携方式（LINE Login併用またはMessaging API中心）を決定し、利用者別LINE通知へ進む
 3. 利用規約とプライバシーポリシーの版番号・発効日・問い合わせ先を継続確認する
 4. GitHub Actionsの外部ActionをコミットSHAで固定する
@@ -376,7 +376,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。退会処理とPhase 4の利用者別LINE通知は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。退会処理は実装済みで、本番deployとproduction acceptanceは未完了です。Phase 4の利用者別LINE通知は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。
