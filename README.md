@@ -321,9 +321,9 @@ Cookie値、Authorization、APIキー、token・secretを含むヘッダー値�
 
 本番通知は、利用者の通知条件と `run-output/availability.json` を照合し、`matching -> enqueue -> dispatch` の順で利用者別メールを配信します。重複防止はDB側の利用者・チャネル・`slot_id` 単位で行います。各ステップは独立したRepository Variableで有効化し、enqueueはservice-role credential、dispatchはdelivery worker credentialだけを受け取ります。
 
-Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを加え、署名済みwebhookの `sent`、`delivery_delayed`、`delivered`、`failed`、`bounced`、`complained`、`suppressed` をDBへ正規化しました。`svix-id`で重複を排除し、到着順ではなくeventの`created_at`と固定priorityで状態を決めます。productionではmigration、webhook、senderを反映し、署名拒否、外部認証メールの無視、通知canaryのdelivered、provider event、duplicate replayのno-opまで確認済みです。現在はcanary後24〜48時間のaggregate観察中です。raw webhook payload、宛先、sender、subjectは保存・ログ出力しません。
+Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを加え、署名済みwebhookの `sent`、`delivery_delayed`、`delivered`、`failed`、`bounced`、`complained`、`suppressed` をDBへ正規化しました。`svix-id`で重複を排除し、到着順ではなくeventの`created_at`と固定priorityで状態を決めます。productionではmigration、webhook、sender、通知canary、duplicate replayのno-opを確認し、2026-08-19に24時間超のaggregate観察も完了しました。異常status、retry滞留、bounce、complaint、suppressionがないことを確認済みです。raw webhook payload、宛先、sender、subjectは保存・ログ出力しません。
 
-Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、Cloudflare Workerの公開confirmation/RFC 8058 endpoint、body-onlyのSupabase unsubscribe Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。Supabase hosted GETが`text/plain`になること、およびquery capabilityがSupabase Invocation LogsのURL/searchへ保存されることをsender rollout前の実測で確認したため、直接Supabase URLは棄却しました。production migrationと旧Function v1は反映済みですが、Worker、Function hotfix、sender/footer/headerは未deployで、global flagも変更していません。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。必須log boundary、maintenance guard、rollout順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
+Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、Cloudflare Workerの公開confirmation/RFC 8058 endpoint、body-onlyのSupabase unsubscribe Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。Supabase hosted GETとInvocation Logsの実測を受けて直接Supabase URLを棄却し、`unsubscribe.tenniscourtwatcher.com`のCloudflare Workerを公開入口としました。production rolloutとacceptanceは2026-08-18に完了し、本文footerは認証済みAccount UI、RFC 8058 capabilityはheadersだけに分離しています。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。必須log boundary、maintenance guard、rollout順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
 
 Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。会員とLINEユーザーを紐づける利用者別LINE通知はPhase 4の将来機能として扱います。
 
@@ -367,20 +367,17 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 
 ## 今後の作業
 
-1. Supabaseプロジェクト、リージョン、料金枠、環境分離を決定・作成する
-2. GitHub Pagesの本番callback URLをSupabaseのRedirect URLsへ登録し、Repository Variablesを設定する
-3. メールマジックリンク、SMTP、リンク有効期限、レート制限を設定して実環境smoke testを行う
-4. 対象Supabaseのmigration履歴を確認して未適用分を手動適用し、複数の架空ユーザーでRLS、RPC、5件上限、並行作成を実DB検証する
-5. [Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)に従い、Phase 3.5bを0件guard付きで段階的に本番反映してcanary確認する
-6. Phase 3.5cとして90日retention cleanupを実装し、退会Edge Functionを別スコープで実装する
-7. 利用規約とプライバシーポリシーの暫定初版を確認し、版番号・発効日・問い合わせ先を確定する
-8. GitHub Actionsの外部ActionをコミットSHAで固定する
-9. サイト利用規約と適切なアクセス頻度を継続確認する
+1. 単日指定と曜日指定が矛盾する通知条件を防ぐUI・入力検証を追加する
+2. 退会Edge FunctionをPhase 3とは別スコープで実装する
+3. Phase 4のLINE連携方式（LINE Login併用またはMessaging API中心）を決定し、利用者別LINE通知へ進む
+4. 利用規約とプライバシーポリシーの版番号・発効日・問い合わせ先を継続確認する
+5. GitHub Actionsの外部ActionをコミットSHAで固定する
+6. 対象予約サイトの利用規約と適切なアクセス頻度を継続確認する
 
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、Phase 3.5aのdelivery feedbackは本番反映・canary確認済みで、現在24〜48時間のaggregate観察中です。Phase 3.5bのunsubscribeコードは実装済み・本番未反映です。退会処理、Phase 3.5c retention cleanup、Phase 4の利用者別LINE通知は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。退会処理とPhase 4の利用者別LINE通知は未実装です。migrationの適用状況と実DB RLS検証状況は対象環境ごとに確認してください。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。

@@ -310,4 +310,4 @@ List-Unsubscribe-Post: List-Unsubscribe=One-Click
 ### acceptance判定
 
 
-Phase 3.5bのproduction acceptanceはPASSとし、実装・rollout・canary検証を完了とする。人間向け本文はAccount UI設定画面だけを指し、unsubscribe capabilityはRFC 8058 headersだけに限定する。以後は既存architectureを維持しながらaggregate monitoringを通常運用として継続する。Phase 3の次の実装scopeはPhase 3.5c retention cleanupとする。
+Phase 3.5bのproduction acceptanceはPASSとし、実装・rollout・canary検証を完了とする。人間向け本文はAccount UI設定画面だけを指し、unsubscribe capabilityはRFC 8058 headersだけに限定する。以後は既存architectureを維持しながらaggregate monitoringを通常運用として継続する。その後Phase 3.5c retention cleanupのproduction rolloutも2026-08-19に完了し、Phase 3全体を完了とした。

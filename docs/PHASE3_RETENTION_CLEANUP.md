@@ -53,9 +53,10 @@ pg_cronはproduction SQL Editorから作成したjob ownerで実行する。
 
 ## 4. Production rollout
 
-2026-08-18時点のproduction実測では、最古のmessage/delivery itemでも2026-08-12であり、
-90日cleanupのproduction candidate count is 0である。したがってmigration適用直後に削除される
-既存production dataはない。
+2026-08-19にproduction rolloutを完了した。migration適用後のcandidate countはmessage、
+delivery itemとも0で、manual cleanupも全削除件数0で成功した。
+`email-notification-retention-cleanup` cronを03:17 JSTの日次実行として作成し、
+2026-08-19の初回実行成功と対象table件数・candidate countに異常がないことを確認した。
 
 rolloutは次の順序で行う。
 
