@@ -57,7 +57,7 @@ test("renderEmail escapes user-controlled HTML and omits unsafe links", () => {
   assert.doesNotMatch(rendered.html, /<img/);
   assert.match(
     rendered.text,
-    /メール通知設定を開く: https:\/\/mtddzd5vw2-gif\.github\.io\/tennis-court-watcher\/account\/notifications\.html#email-notification-settings/,
+    /メール通知設定を開く: https:\/\/tenniscourtwatcher\.com\/account\/notifications\.html#email-notification-settings/,
   );
   assert.match(rendered.html, />メール通知設定を開く<\/a>/);
   assert.doesNotMatch(
