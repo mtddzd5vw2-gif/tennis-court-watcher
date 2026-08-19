@@ -122,4 +122,6 @@ def test_runbook_keeps_cron_outside_migration_and_uses_off_hours() -> None:
     assert "03:17 jst" in normalized
     assert "17 18 * * *" in normalized
     assert "cron job itself is not part of the migration" in normalized
-    assert "production candidate count is 0" in normalized
+    assert "candidate count" in normalized
+    assert "delivery itemとも0" in normalized
+    assert "manual cleanupも全削除件数0" in normalized
