@@ -55,7 +55,7 @@ const UUID_PATTERN =
 const PRODUCTION_UNSUBSCRIBE_PUBLIC_ORIGIN =
   "https://unsubscribe.tenniscourtwatcher.com";
 const PRODUCTION_NOTIFICATION_SETTINGS_URL =
-  "https://mtddzd5vw2-gif.github.io/tennis-court-watcher/account/notifications.html#email-notification-settings";
+  "https://tenniscourtwatcher.com/account/notifications.html#email-notification-settings";
 
 export function escapeHtml(value: string): string {
   return value

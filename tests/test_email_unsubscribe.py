@@ -104,7 +104,7 @@ def test_sender_separates_human_settings_link_from_rfc8058_headers() -> None:
     assert "メール通知設定を開く" in helpers
     assert "メール通知を停止する" not in helpers
     assert (
-        "https://mtddzd5vw2-gif.github.io/tennis-court-watcher/"
+        "https://tenniscourtwatcher.com/"
         "account/notifications.html#email-notification-settings"
     ) in helpers
     assert '"List-Unsubscribe": `<${safeUnsubscribeUrl}>`' in helpers

@@ -35,7 +35,7 @@ Cloudflare Workerからbody-only POSTする版のproduction fake token log bound
 
 ```text
 email footer
-  -> https://mtddzd5vw2-gif.github.io/tennis-court-watcher/account/notifications.html#email-notification-settings
+  -> https://tenniscourtwatcher.com/account/notifications.html#email-notification-settings
   -> authenticated Account UI
   -> notification_email_preferences
 
@@ -163,7 +163,7 @@ https://unsubscribe.tenniscourtwatcher.com/u/<token>
 本文リンク:
 
 ```text
-https://mtddzd5vw2-gif.github.io/tennis-court-watcher/account/notifications.html#email-notification-settings
+https://tenniscourtwatcher.com/account/notifications.html#email-notification-settings
 ```
 
 RFC 8058用のcapability URLはResend headersだけに使用する。
