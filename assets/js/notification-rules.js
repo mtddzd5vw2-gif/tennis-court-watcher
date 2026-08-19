@@ -420,6 +420,60 @@
     return Number(match[1]) * 60 + Number(match[2]);
   }
 
+  function parseIsoDateUtc(value) {
+    const match = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) {
+      return null;
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(year, month - 1, day);
+
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return null;
+    }
+
+    return date;
+  }
+
+  function dateRangeContainsSelectedWeekday(dateFrom, dateTo, selectedWeekdays) {
+    if (selectedWeekdays.length === 0) {
+      return true;
+    }
+
+    const startDate = parseIsoDateUtc(dateFrom);
+    const endDate = parseIsoDateUtc(dateTo);
+    if (!startDate || !endDate || startDate > endDate) {
+      return true;
+    }
+
+    const selected = new Set(selectedWeekdays);
+    const dayMilliseconds = 24 * 60 * 60 * 1000;
+    const spanDays = Math.floor(
+      (endDate.getTime() - startDate.getTime()) / dayMilliseconds,
+    );
+
+    for (let offset = 0; offset <= Math.min(spanDays, 6); offset += 1) {
+      const weekday = new Date(
+        startDate.getTime() + offset * dayMilliseconds,
+      ).getUTCDay();
+      const isoWeekday = weekday === 0 ? 7 : weekday;
+      if (selected.has(isoWeekday)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function validateRuleForm() {
     const errors = [];
     const trimmedName = nameInput.value.trim();
@@ -480,6 +534,20 @@
       errors.push({
         message: "開始日は終了日以前の日付にしてください。",
         elements: [dateFromInput, dateToInput],
+      });
+    } else if (
+      dateFromInput.value &&
+      dateToInput.value &&
+      !dateRangeContainsSelectedWeekday(
+        dateFromInput.value,
+        dateToInput.value,
+        selectedWeekdays,
+      )
+    ) {
+      errors.push({
+        message:
+          "対象期間内に選択した曜日がありません。日付または曜日を変更してください。",
+        elements: [dateFromInput, dateToInput, weekdayFieldset],
       });
     }
 

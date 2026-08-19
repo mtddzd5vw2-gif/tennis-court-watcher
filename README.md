@@ -367,12 +367,11 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 
 ## 今後の作業
 
-1. 単日指定と曜日指定が矛盾する通知条件を防ぐUI・入力検証を追加する
-2. 退会Edge FunctionをPhase 3とは別スコープで実装する
-3. Phase 4のLINE連携方式（LINE Login併用またはMessaging API中心）を決定し、利用者別LINE通知へ進む
-4. 利用規約とプライバシーポリシーの版番号・発効日・問い合わせ先を継続確認する
-5. GitHub Actionsの外部ActionをコミットSHAで固定する
-6. 対象予約サイトの利用規約と適切なアクセス頻度を継続確認する
+1. 退会Edge FunctionをPhase 3とは別スコープで実装する
+2. Phase 4のLINE連携方式（LINE Login併用またはMessaging API中心）を決定し、利用者別LINE通知へ進む
+3. 利用規約とプライバシーポリシーの版番号・発効日・問い合わせ先を継続確認する
+4. GitHub Actionsの外部ActionをコミットSHAで固定する
+5. 対象予約サイトの利用規約と適切なアクセス頻度を継続確認する
 
 ## 注意事項
 
