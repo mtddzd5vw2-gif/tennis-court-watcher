@@ -242,6 +242,35 @@ def test_notification_script_validates_every_form_rule_in_japanese() -> None:
     assert "minimumDuration % 30 !== 0" in script
 
 
+def test_notification_script_rejects_date_ranges_without_selected_weekdays() -> None:
+    script = read(SCRIPT_PATH)
+    helper = script_section(
+        script,
+        "function parseIsoDateUtc",
+        "function validateRuleForm",
+    )
+    validation = script_section(
+        script,
+        "function validateRuleForm",
+        "function normalizeTimeInput",
+    )
+
+    assert "function dateRangeContainsSelectedWeekday" in helper
+    assert "setUTCFullYear" in helper
+    assert ".getUTCDay()" in helper
+    assert ".getDay()" not in helper
+    assert "weekday === 0 ? 7 : weekday" in helper
+    assert "Math.min(spanDays, 6)" in helper
+    assert (
+        "対象期間内に選択した曜日がありません。"
+        "日付または曜日を変更してください。"
+    ) in validation
+    assert "!dateRangeContainsSelectedWeekday(" in validation
+    assert "[dateFromInput, dateToInput, weekdayFieldset]" in validation
+    assert validation.index("dateFromInput.value > dateToInput.value") < (
+        validation.index("!dateRangeContainsSelectedWeekday(")
+    )
+
 def test_notification_script_uses_atomic_rpc_and_scoped_direct_mutations() -> None:
     script = read(SCRIPT_PATH)
 
