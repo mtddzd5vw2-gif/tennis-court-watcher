@@ -1,12 +1,15 @@
-# kagoshima-tennis-alert
+# Tennis Court Watcher
 
-鹿児島県のテニスコート予約サイトを確認し、直近15日間の土日祝にある8:00〜13:00の空き候補を、GitHub Pagesと利用者別メールで知らせるプロジェクトです。
+鹿児島市のテニスコート予約サイトを確認し、直近15日間の土日祝にある8:00〜13:00の空き候補を、GitHub Pagesと利用者別メールで知らせるプロジェクトです。
 
 > [!IMPORTANT]
 > 鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場の空き取得は、いずれも認証不要の実画面に対応済みです。スクレイパーは予約サイトの利用者ID・パスワードを使用・保存せず、自動予約も行いません。会員ログインはこれとは分離したSupabase Authのメールマジックリンクを使用します。
 
 ## Documentation
 
+現在利用者へ提供している仕様はService Specification、
+現在地・次の作業はDevelopment Roadmapを正とします。
+Phase別設計書は詳細設計と実装履歴を含みます。
 - [Project Vision](docs/PROJECT_VISION.md)
 - [Development Roadmap](docs/DEVELOPMENT_ROADMAP.md)
 - [Service Specification](docs/SERVICE_SPECIFICATION.md)
@@ -76,7 +79,9 @@ PKCEのcode verifierはリンクを要求したブラウザ側に保存される
 
 Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限します。DB triggerが最終的な強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4の利用者別LINE通知は将来機能です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 
-照合対象は、日別取得結果が `success` で、枠の `status` が `available` のデータだけです。施設、ISO 8601曜日、任意の日付範囲を確認し、通知条件時間帯と空き時間帯の実際の重複分数が最低連続時間以上なら一致します。同じ利用者の複数条件が同じ `slot_id` へ一致しても利用者・枠の候補は1件にまとめ、別利用者は別候補にします。現在の取得範囲は直近15日間の土日・日本の祝日、8:00〜13:00、60分以上です。平日・時間外・60分未満の条件も保存できますが、該当データを取得しないため現時点では一致しません。祝日は実際の日付の曜日で判定します。
+照合対象は、日別取得結果が `success` で、枠の `status` が `available` のデータだけです。施設、ISO 8601曜日、任意の日付範囲を確認し、通知条件時間帯と空き時間帯の実際の重複分数が最低連続時間以上なら一致します。同じ利用者の複数条件が同じ `slot_id` へ一致しても利用者・枠の候補は1件にまとめ、別利用者は別候補にします。
+
+現在のMonitoring Policyでは、直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を取得します。通知条件自体は30分以上を指定できるため、取得済み候補との重複時間が条件の最低連続時間以上なら60分未満を希望する条件も一致し得ます。通常の平日・時間外は現在監視対象外ですが、条件は保存できます。祝日は実際の日付の曜日で判定します。
 
 ## ファイル構成
 
@@ -367,10 +372,15 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 
 ## 今後の作業
 
-1. Phase 4のLINE連携方式（LINE Login併用またはMessaging API中心）を決定し、利用者別LINE通知へ進む
-2. 利用規約とプライバシーポリシーの版番号・発効日・問い合わせ先を継続確認する
-3. GitHub Actionsの外部ActionをコミットSHAで固定する
-4. 対象予約サイトの利用規約と適切なアクセス頻度を継続確認する
+Phase 4へ進む前にLaunch Readiness Gateを完了します。
+
+1. 退会failure-pathのhardening
+2. 利用規約・プライバシーポリシー・運営者/問い合わせ先の正式化
+3. 各予約サイトの利用規約・アクセス頻度の最終確認
+4. GitHub Actions外部ActionのコミットSHA固定
+5. Monitoring Policyと監視範囲外条件のUI表示
+6. 鹿児島βで使用する運用指標の決定
+7. Gate完了後、Phase 4の利用者別LINE通知へ進む
 
 ## 注意事項
 

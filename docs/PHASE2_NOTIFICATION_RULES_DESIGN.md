@@ -6,7 +6,7 @@
 
 Phase 2は完了である。通知条件の一覧・新規作成・編集・削除・一時停止・有効化UI、条件本体・施設・曜日を1トランザクションで保存する `save_notification_rule` RPC、有効な条件と空き候補を照合する純粋Pythonエンジン、1利用者5件の条件数上限を実装済みである。migrationの適用状況は環境ごとに確認する。
 
-Phase 3の責務は、利用者別メール送信、配信キュー、再試行、バウンス・配信停止処理、通知履歴である。実際の利用者別メール送信は未実装であり、Phase 2のテーブルやmigrationへ含めない。
+Phase 3の責務は、利用者別メール送信、配信キュー、再試行、delivery feedback、配信停止・再有効化、retentionである。これらはPhase 2のテーブルやmigrationへ含めず、Phase 3で実装しproduction acceptanceまで完了した。
 
 ## 2. テーブル一覧
 
@@ -260,13 +260,19 @@ active確認は既存 `profiles` の本人SELECT RLSを利用した単純な `ex
 
 CLIは標準ライブラリ `urllib` で `list_notification_rules_for_matching()` を呼び出す。HTTPSの `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` を必要とし、timeoutを設定する。Authorization header、apikey、service-role key、HTTPレスポンス本文、利用者ID、条件IDをログへ出さず、不正なJSONやルール形式では詳細を公開せず失敗する。新しい外部Pythonパッケージは使用しない。
 
-GitHub Actionsではスクレイピング完了後、`vars.ENABLE_NOTIFICATION_MATCHING == 'true'` のときだけ `run-output/availability.json` を照合する。`SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` は照合stepの `env` だけへ渡す。match詳細や結果ファイルはArtifactとPagesへ追加せず、既存の単一通知先LINE通知、Pages配信、`reservation-page-snapshots` Artifactの構成を維持する。Phase 2照合は集計だけのシャドーモードであり、stepを `continue-on-error: true` とする。照合失敗はActions上のwarningとして確認するが、既存JSONのcommit、LINE状態更新、Pagesデプロイをブロックしない。
+Phase 2完了時点では、GitHub Actionsでスクレイピング後に `ENABLE_NOTIFICATION_MATCHING=true` の場合だけ照合するシャドーモードとして導入した。match詳細や結果ファイルをArtifactやPagesへ保存せず、`SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` は照合stepだけへ渡す境界は現在も維持する。
+
+その後Phase 3.4.2で `matching -> enqueue -> dispatch` のscheduled production pathを有効化し、利用者別メールの自動配信を確認した。Phase 3.4.3で単一通知先のlegacy LINE経路とstate fileを退役した。したがって本節のシャドーモードとlegacy LINEに関する記述はPhase 2導入時点の実装履歴である。
 
 Actionsを有効化するにはRepository Variable `ENABLE_NOTIFICATION_MATCHING=true` と `SUPABASE_URL`、Repository Secret `SUPABASE_SERVICE_ROLE_KEY` が必要である。service-role keyはブラウザ公開設定やジョブ全体の環境変数へ置かない。
 
 ## 11. 現在の空き取得範囲
 
-現在のスクレイパーが取得する範囲は、今日を含む直近15日間の土日・日本の祝日、8:00〜13:00、連続60分以上である。平日、時間外、60分未満の通知条件も保存できるが、現時点ではその範囲の空きデータを取得しないため一致しない。この制限を `account/notifications.html` にも表示する。
+現在のスクレイパーは、今日を含む直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を生成する。
+
+通知条件の最低連続時間は30分以上を指定できる。例えば60分以上の取得済み空き候補と通知条件時間帯が30分以上重なり、条件の最低連続時間が30分なら一致し得る。通常の平日や8:00〜13:00外は現在のMonitoring Policyでは取得しないため、その範囲だけを希望する条件には候補が生成されない。平日の曜日を選択していても、その日が日本の祝日として取得対象になっている場合は一致し得る。
+
+`account/notifications.html` には現行取得範囲の案内を表示している。監視範囲外の条件を保存可能なまま警告するUXと、60分未満を希望する条件の説明はLaunch Readiness GateのMonitoring Policy UXで現在の照合仕様へ整合させる。
 
 ## 12. migrationの適用とロールバック
 

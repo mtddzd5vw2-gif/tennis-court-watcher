@@ -2,9 +2,17 @@
 
 ## 1. 文書の目的
 
-本書は、Tennis Court Watcherの利用者向け機能、主要データ、認証・認可、システム責務、拡張方針を定義する。
-現行の空き監視をPhase 0、完成済みの会員基盤をPhase 1として扱う。Phase 2の通知条件設定は完了している。
-開発順序とPhaseごとの完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
+本書は、Tennis Court Watcherの**現在利用者へ提供しているサービス仕様の正**として、
+利用者向け機能、主要データ、認証・認可、システム責務、拡張方針を定義する。
+
+2026-08-20時点でPhase 0〜3は完了している。
+Phase 1の退会もproduction acceptanceまで完了した。
+Phase 4の利用者別LINE通知以降は未実装である。
+
+長期的な目的は[Project Vision](./PROJECT_VISION.md)、
+現在地・実装順序・完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
+Phase別設計書に残る導入当時の記述と本書が矛盾する場合は、
+明示的な履歴記述を除き本書の現在仕様を優先する。
 
 「案」と記載した項目は設計候補であり、未確定事項は**要決定**と明記する。
 
@@ -54,13 +62,13 @@ Tennis Court Watcherは、公共施設予約サイトの空き状況を定期的
 
 ## 4. 主要ユースケース
 
-Phase 1のUC-04〜UC-07のうち、会員登録、認証メール、ログイン、セッション保持、マイページ、ローカル範囲ログアウトは本番確認済みである。Phase 2は通知条件の保存・編集・停止、Phase 3は条件に基づく実際の利用者別メール送信を担当し、両者を混同しない。
+Phase 1のUC-04〜UC-07は、会員登録、認証メール、ログイン、セッション保持、マイページ、ローカル範囲ログアウト、退会まで本番確認済みである。Phase 2の通知条件管理、Phase 3の利用者別メール送信もproduction acceptanceまで完了している。
 
 | ID | Phase | 主体 | ユースケース |
 | --- | --- | --- | --- |
 | UC-01 | 0 | 未ログイン利用者 | 3施設の最新の空き候補と取得状態をWebで確認する |
 | UC-02 | 0 | 運用者 | 定期取得を実行し、施設ごとの成功・空き0件・失敗を把握する |
-| UC-03 | 0 | 既存通知先 | 新しく検出された対象施設の空きをLINEで受け取る |
+| UC-03 | 0 | legacy単一通知先 | Phase 0当時、新しく検出された対象施設の空きをLINEで受け取る。Phase 3.4.3で退役済み |
 | UC-04 | 1 | 未登録利用者 | 利用規約を確認・同意し、メールアドレスで会員登録する |
 | UC-05 | 1 | 登録中利用者 | 認証メールを受け取り、メールアドレスを認証する |
 | UC-06 | 1 | 会員 | ログインし、自分のマイページを表示する |
@@ -228,7 +236,9 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 
 ## 11. 通知条件
 
-通知条件設定はPhase 2で提供し、実装は完了している。通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI、原子的保存RPC、1利用者5件の上限、純粋Pythonの照合エンジン、service-role専用の条件取得RPCは実装済みである。Phase 2は条件管理と空き候補に対する照合結果の生成までを責務とする。Phase 3.1のqueue foundationとPhase 3.2のemail delivery workerは実装済みであり、production deploymentとcanaryは未実施で、automatic enqueue/dispatchは未実装である。
+通知条件設定はPhase 2で提供し、実装は完了している。通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI、原子的保存RPC、1利用者5件の上限、純粋Pythonの照合エンジン、service-role専用の条件取得RPCは実装済みである。Phase 2は条件管理と空き候補に対する照合結果の生成までを責務とする。
+
+Phase 3ではqueue、email delivery worker、production deployment、canary、automatic enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupまで実装しproduction acceptanceを完了した。
 
 ### 11.1 確定データ構造
 
@@ -251,7 +261,11 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 
 上限の最終的な強制箇所は `notification_rules` の `before insert or update of user_id` triggerである。`security invoker` と空の `search_path` を使用し、RLSや既存policyを変更しない。新規作成または所有者変更時は、`new.user_id` から生成した安定した64bitキーでtransaction advisory lockを取得してから移動先の全条件を数える。同一利用者の並行作成を直列化し、6件以上になる操作を拒否する。DBの競合エラーはUIで日本語へ変換し、一覧を再取得して実件数とボタン状態を同期する。
 
-現行の「直近15日間、土日・日本の祝日、8:00〜13:00、60分以上」はPhase 0の監視・取得範囲である。平日、時間外、60分未満の条件も保存できるが、その範囲の空きデータを取得しないため現時点では一致しない。祝日は祝日専用条件ではなく、実際の日付のISO曜日で判定する。この制限は通知条件画面にも表示する。
+現行のMonitoring Policyでは、直近15日間の土日・日本の祝日、8:00〜13:00について、スクレイパーが連続60分以上の空き候補を生成する。
+
+通知条件の最低連続時間は30分以上を指定できるため、取得済みの60分以上候補との実際の重複時間が条件の最低連続時間以上なら、60分未満を希望する条件も一致し得る。通常の平日や8:00〜13:00外は現在取得しない。平日の曜日条件でも、その日が日本の祝日として取得対象であれば一致し得る。
+
+Monitoring Policy外の条件も保存可能である。通知条件画面には現行取得範囲の案内を表示しており、範囲外条件の警告表現と60分未満を希望する条件の説明はLaunch Readiness GateのMonitoring Policy UXで現在の照合仕様へ整合させる。祝日は祝日専用条件ではなく、実際の日付のISO曜日で判定する。
 
 ### 11.2 照合ルール
 
@@ -261,16 +275,18 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 - 条件時間帯と空き時間帯の実際の重複分数を求め、`minimum_duration_minutes` 以上の場合だけ一致する。枠全体の `duration_minutes` は最低時間判定に使わない。
 - 同一利用者の複数条件が同じ `slot_id` へ一致しても、利用者・`slot_id` の候補は1件にまとめる。一致した条件は、条件ID、重複開始・終了時刻、重複分数を持つ `matched_rules` として決定的にソートする。
 - 同じ `slot_id` でも利用者が異なる場合は別候補とする。入力枠の重複は `slot_id` 単位で除去し、候補順も決定的にする。
-- チャネルへの展開、配信済み判定、一度消えた枠の再通知、待機時間、キュー、再試行、通知履歴はPhase 3で決定する。
+- チャネル展開、配信済み判定、キュー、再試行、delivery feedback、配信停止はPhase 3で実装済みである。重複防止の正は利用者・channel・`slot_id` とし、同じ利用者へ同じchannel・`slot_id`を再通知しない。利用者向け通知履歴画面は未実装である。
 - match詳細は `data/`、GitHub Pages、公開Artifactへ保存せず、CLIログは評価件数と一致件数の集計だけを出力する。
 
 通知条件は `list_notification_rules_for_matching()` から取得する。このRPCはactive会員の有効かつ施設・曜日が各1件以上ある条件だけを対象に、条件ID、利用者ID、日付範囲、開始・終了時刻、最低時間、施設ID配列、ISO曜日配列だけを返し、メールアドレスを返さない。`security invoker`、`stable`、空の `search_path`、完全修飾名を使用し、既存RLSやpolicyを変更しない。実行権限は `PUBLIC`、`anon`、`authenticated` から剥奪して `service_role` だけへ付与するため、Web UIやpublishable keyからは呼び出せない。
 
-GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` の場合だけ `run-output/availability.json` を照合する。`SUPABASE_URL` とRepository Secret `SUPABASE_SERVICE_ROLE_KEY` は照合stepだけへ渡し、ジョブ全体、Pages、Artifactへ渡さない。service-role key、Authorization header、apikey、利用者ID、条件ID、レスポンス本文をログへ出さない。Phase 2照合は集計だけのシャドーモードで、照合stepの失敗はwarningとして確認しつつ、既存の取得・単一宛先LINE・JSON commit・Pages更新を継続する。実行前に、対象環境で照合用migrationが適用済みか確認する。
+GitHub Actionsではスクレイピング後に通知条件照合を行い、Phase 3の有効化条件を満たす場合は `matching -> enqueue -> dispatch` の順で利用者別メール配信へ進む。service-role credentialは必要なstepにだけ渡し、match詳細、利用者ID、条件ID、秘密値をPages、Artifact、通常ログへ保存・出力しない。
+
+Phase 3.4.2でscheduled production runによる自動メール配信を確認済みであり、Phase 3.4.3で単一通知先legacy LINE経路とそのstate fileを削除した。
 
 ## 12. メール通知
 
-利用者別メール通知はPhase 3で提供する。queue foundationとResendを使用するemail delivery workerは実装済みだが、本番へのdeploymentとcanaryは未実施で、automatic enqueue/dispatchは未実装である。Phase 1の認証メールとはAPI key、目的、テンプレート、配信停止、送信処理を分離する。
+利用者別メール通知はPhase 3で提供し、production acceptanceまで完了している。Resendを使用するqueue / delivery worker、自動enqueue / dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupを本番運用している。Phase 1の認証メールとはAPI key、目的、テンプレート、配信停止、送信処理を分離する。
 
 ### 12.1 通知内容
 
@@ -288,11 +304,11 @@ GitHub Actionsはスクレイピング後、`ENABLE_NOTIFICATION_MATCHING=true` 
 
 - メール認証済みで、退会・停止されておらず、メール通知が有効な利用者だけを対象とする。
 - キューを介して再試行可能にし、スクレイピング処理の成否から送信処理を分離する。
-- 利用者・空き枠・条件・チャネル単位で冪等性キーを持つ。
+- DBの重複防止の正は `notification_delivery_items` の `unique (user_id, channel, slot_id)` とする。同じ利用者の複数条件が同じ `slot_id` に一致しても、その利用者・channelでは1回だけ通知対象とする。
 - バウンス、苦情、配信停止を記録し、以後の配信に反映する。
 - 認証メールはマーケティング通知停止の影響を受けないが、法令・事業者ポリシーに従う。
 
-配信事業者、送信上限、再試行回数、集約単位、即時通知かダイジェストかは**要決定**。
+現行の配信事業者はResendである。queue、再試行、delivery feedback、配信停止、90日retentionは実装済みである。将来の利用規模に応じた送信上限、アラート閾値、ダイジェスト等の追加配信方式は必要性を確認して見直す。
 
 ## 13. 将来のLINE連携
 
@@ -371,15 +387,24 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 
 ### 15.3 通知
 
-| エンティティ | 主な項目 | 備考 |
+| エンティティ | 主な役割 | 備考 |
 | --- | --- | --- |
-| `notification_rules` | `id`, `user_id`, `name`, `is_enabled`, `date_from`, `date_to`, `start_time`, `end_time`, `minimum_duration_minutes`, `created_at`, `updated_at` | Phase 2の利用者条件本体 |
-| `notification_rule_facilities` | `rule_id`, `user_id`, `facility_id`, `created_at` | 複数施設との関連。複合外部キーで所有者を整合 |
-| `notification_rule_weekdays` | `rule_id`, `user_id`, `weekday`, `created_at` | ISO 8601曜日1〜7。複合外部キーで所有者を整合 |
+| `notification_rules` | 利用者の通知条件本体 | Phase 2。1利用者最大5件 |
+| `notification_rule_facilities` | 通知条件と施設の関連 | Phase 2 |
+| `notification_rule_weekdays` | 通知条件とISO曜日の関連 | Phase 2 |
+| `notification_email_preferences` | 利用者ごとのメール通知ON/OFFと停止理由 | Phase 3。メールアドレスは保持しない |
+| `notification_delivery_items` | 利用者・channel・`slot_id`単位の重複防止台帳と送信用snapshot | `unique (user_id, channel, slot_id)` が重複防止の正 |
+| `notification_messages` | 配信queue、claim、retry、provider状態 | 利用者単位の送信試行 |
+| `notification_message_items` | messageとdelivery itemの関連 | delivery itemを1つのmessageへ関連付ける |
+| `notification_provider_events` | Resend delivery feedbackの重複排除・状態反映 | raw webhook payloadや宛先は保存しない |
+| `notification_email_unsubscribe_tokens` | メール配信停止用capability | browser roleから直接参照しない |
 
-`notification_channels`、`notification_events` はPhase 3以降、`line_links` はPhase 4の論理モデル候補であり、今回実装しない。
+Phase 3のメール通知データモデルは実装・production rollout済みである。
+メールアドレスはSupabase Authを正とし、通知用public schemaへ複製しない。
+利用者別LINE通知用のデータモデルはPhase 4で前方追加する。
 
-詳細は [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照する。
+詳細は [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)、
+[Phase 3 利用者別メール通知設計](./PHASE3_USER_EMAIL_NOTIFICATION_DESIGN.md)を参照する。
 
 ### 15.4 課金案
 
@@ -409,7 +434,7 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 - 管理用Service Role等はサーバー処理だけで使用し、ブラウザ、Pages、リポジトリへ含めない。
 - 管理者権限の付与・解除は、明示的なAuth user UUIDを受け取るtrusted server専用RPCで行う。role変更監査と緊急停止方法は将来の運用要件に応じて追加する。
 
-### 16.3 Phase 1・Phase 2 RLS
+### 16.3 Phase 1〜3 RLS
 
 - Phase 1の3つのpublicテーブルと、Phase 2で追加する6テーブルすべてでRLSを有効にする。
 - `profiles`: `id = auth.uid()` の本人だけがSELECT可能。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
@@ -421,7 +446,8 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 - `enforce_notification_rule_limit()` は `security invoker` と既存RLSのままtriggerから実行する。PUBLIC、anon、authenticatedには直接EXECUTEを許可しない。
 - `save_notification_rule()` は `security invoker` と既存RLSのまま動作し、`auth.uid()` で本人を確定する。PUBLICとanonから実行権限を剥奪し、authenticatedだけにEXECUTEを許可する。
 - `list_notification_rules_for_matching()` は `security invoker` のservice-role専用RPCとし、ブラウザロールへEXECUTEを許可しない。メールアドレスは返さない。
-- `notification_events`: 本人は必要な表示項目だけ参照可能。生成・状態更新は通知エンジンに限定する。
+- `notification_email_preferences`: active会員本人は自分の設定を参照し、許可された範囲でメール通知ON/OFFを変更できる。provider起因のsuppression状態はブラウザから解除しない。
+- `notification_delivery_items`、`notification_messages`、`notification_message_items`、`notification_provider_events`、`notification_email_unsubscribe_tokens`: RLSを有効にし、通常のbrowser roleへ直接参照・更新権限を与えない。必要な処理はservice-role専用RPCまたは信頼済みEdge Functionから行う。
 - `regions`、`facility_types`、`facilities`: `authenticated` はSELECTのみ可能とし、`anon` にはDB参照権限を与えない。ブラウザroleによるINSERT、UPDATE、DELETEは許可しない。
 
 ## 17. 個人情報とセキュリティ
@@ -561,39 +587,45 @@ Phase 4のLINE連携解除、Phase 5の有料契約処理は各Phaseで追加す
 - 重要な状態を色だけで表現しない。
 - 対象とする適合水準は**要決定**。
 
-## 24. MVPに含めない機能
+## 24. 現在の技術MVPに含めない機能
 
-初期MVPおよび直近のPhase 1には、次を含めない。
+2026-08-20時点の技術MVPはPhase 0〜3であり、
+空き表示、会員基盤、通知条件、利用者別メール通知までを含む。
+
+現在の技術MVPには次を含めない。
 
 - 自動予約、予約代行、キャンセル、施設利用料の支払い
 - 施設予約サイトへのログイン、利用者ID・パスワードの保存
 - GPSによる地域制限、現在地の常時取得
 - 鹿児島市以外の地域対応
 - テニスコート以外の施設種別
-- 利用者別メール通知、利用者別LINE通知
+- 利用者別LINE通知
 - LINEログイン、ソーシャルログイン
 - 有料プラン、決済
+- 利用者向け通知履歴画面
 - AIによる空き予測・おすすめ
 - 地図表示、混雑分析
 - ネイティブモバイルアプリ、ブラウザプッシュ、SMS
 - グループ・法人アカウント
 - 本格的な運用管理画面
 
-Phase 2以降の機能は、各Phaseの完了条件、利用者の需要、取得元の規約、運用コストを確認したうえで順次追加する。
+次の機能はLaunch Readiness、利用者需要、取得元の規約、
+運用コストを確認したうえで順次追加する。
 
 ## 25. 要決定事項一覧
 
-主な要決定事項を追跡する。決定時は、理由、決定日、影響範囲をArchitecture Decision Record等へ残す。
+2026-08-20時点で残る主な要決定事項を追跡する。
+決定時は理由、決定日、影響範囲をArchitecture Decision Record等へ残す。
 
-- Supabaseのリージョン、料金枠、開発・ステージング・本番のプロジェクト分離
-- Supabase APIとの接続方式、GitHub Pages本番URL、独自ドメインの有無
-- 利用規約・プライバシー表示の内容、法務確認、規約改定時の再同意
-- 認証リンクの有効期限、未認証アカウント保持期間
-- メールアドレス変更
-- 個人情報、同意証跡、監査ログ、バックアップの保持期間と削除方式
-- 通知条件数、対象期間、時間粒度、再出現枠の再通知ルール
-- メール通知事業者、配信頻度、集約、再試行、停止処理
-- LINE連携方式、LINE Loginの採否、アカウント紐づけ制約、既存通知の終了条件
+- Supabaseの料金枠、バックアップ要件、開発・ステージング・本番の環境分離
+- 利用規約・プライバシーポリシーの正式内容、運営者表示、問い合わせ先、規約改定時の再同意
+- 認証リンクの運用上の有効期限、未認証アカウント保持期間
+- メールアドレス変更機能の要否
+- 同意証跡、監査ログ、バックアップの保持期間と削除方式
+- 退会失敗時に `withdrawal_pending` 利用者の本人profile・同意履歴参照をさらに制限するか
+- 退会時に現在のJWTとは別の追加再認証を要求するか
+- Monitoring Policyを需要に応じて拡張する基準と監視頻度
+- LINE連携方式、LINE Loginの採否、LINEアカウント紐づけ制約
 - 無料・有料プランの機能、価格、決済事業者、法務・税務・返金
-- 目標稼働率、応答時間、通知遅延、監視閾値
+- 目標稼働率、応答時間、通知遅延、監視・アラート閾値
 - 次に展開する地域・自治体と施設種別
