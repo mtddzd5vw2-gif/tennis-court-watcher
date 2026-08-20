@@ -53,6 +53,25 @@ def named_step(workflow: dict[str, Any], name: str) -> dict[str, Any]:
     )
 
 
+def external_action_references(workflow: dict[str, Any]) -> list[str]:
+    return [
+        step["uses"]
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if "uses" in step and not step["uses"].startswith("./")
+    ]
+
+
+def test_external_actions_are_pinned_to_full_commit_shas() -> None:
+    references = external_action_references(load_workflow())
+
+    assert references
+    assert all(
+        re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", reference)
+        for reference in references
+    )
+
+
 def test_data_update_concurrency_is_global_and_non_cancelling() -> None:
     workflow = load_workflow()
 
@@ -332,7 +351,9 @@ def test_pages_checkout_uses_the_update_source_sha() -> None:
         step for step in steps if step.get("name") == "Check out repository"
     )
 
-    assert checkout["uses"] == "actions/checkout@v4"
+    assert checkout["uses"] == (
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    )
     assert checkout["with"] == {
         "ref": "${{ needs.update.outputs.source_sha }}",
     }
