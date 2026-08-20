@@ -374,7 +374,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 
 Phase 4へ進む前にLaunch Readiness Gateを完了します。
 
-1. 退会failure-pathのhardening
+1. 退会failure-pathのhardening — 完了（2026-08-20）
 2. 利用規約・プライバシーポリシー・運営者/問い合わせ先の正式化
 3. 各予約サイトの利用規約・アクセス頻度の最終確認
 4. GitHub Actions外部ActionのコミットSHA固定

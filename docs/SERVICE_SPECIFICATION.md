@@ -437,11 +437,11 @@ Phase 3のメール通知データモデルは実装・production rollout済み�
 ### 16.3 Phase 1〜3 RLS
 
 - Phase 1の3つのpublicテーブルと、Phase 2で追加する6テーブルすべてでRLSを有効にする。
-- `profiles`: `id = auth.uid()` の本人だけがSELECT可能。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
+- `profiles`: `id = auth.uid()` の本人かつ `membership_status` が `pending_terms`、`active`、`suspended` の場合だけSELECT可能とする。`withdrawal_pending` は有効JWTが残っていても本人SELECTを許可しない。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
 - `profiles.account_role`: authenticated本人は自分のroleをSELECTできるが変更できない。anonは参照・変更できない。`set_account_role(uuid, account_role)` は `SECURITY DEFINER`、空のsearch path、service-role専用とする。
-- `terms_acceptances`: `user_id = auth.uid()` の本人だけがSELECT可能。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
+- `terms_acceptances`: `user_id = auth.uid()` の本人かつ対応するprofileが `pending_terms`、`active`、`suspended` の場合だけSELECT可能とする。`withdrawal_pending` は本人履歴もSELECT不可とする。ブラウザからのINSERT/UPDATE/DELETEは許可しない。
 - `legal_document_versions`: authenticated利用者はcurrentのtermsだけをSELECT可能。anonにはDB権限を与えない。
-- `accept_current_terms()` はauthenticatedだけがEXECUTEでき、anonとPUBLICから実行権限を剥奪する。
+- `accept_current_terms()` はauthenticatedだけがEXECUTEでき、anonとPUBLICから実行権限を剥奪する。本人profile行を `FOR UPDATE` でロックし、`withdrawal_pending` の場合は同意履歴を書き込む前に拒否する。
 - `notification_rules`と関連表: `authenticated` のうち、本人かつ `profiles.membership_status = 'active'` の利用者だけがCRUD可能。1利用者最大5件をDB triggerで強制し、有効・停止中の両方を数える。
 - `enforce_notification_rule_limit()` は `security invoker` と既存RLSのままtriggerから実行する。PUBLIC、anon、authenticatedには直接EXECUTEを許可しない。
 - `save_notification_rule()` は `security invoker` と既存RLSのまま動作し、`auth.uid()` で本人を確定する。PUBLICとanonから実行権限を剥奪し、authenticatedだけにEXECUTEを許可する。
@@ -622,7 +622,6 @@ Phase 4のLINE連携解除、Phase 5の有料契約処理は各Phaseで追加す
 - 認証リンクの運用上の有効期限、未認証アカウント保持期間
 - メールアドレス変更機能の要否
 - 同意証跡、監査ログ、バックアップの保持期間と削除方式
-- 退会失敗時に `withdrawal_pending` 利用者の本人profile・同意履歴参照をさらに制限するか
 - 退会時に現在のJWTとは別の追加再認証を要求するか
 - Monitoring Policyを需要に応じて拡張する基準と監視頻度
 - LINE連携方式、LINE Loginの採否、LINEアカウント紐づけ制約
