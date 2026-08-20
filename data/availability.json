@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-08-20T10:51:21+09:00",
+  "generated_at": "2026-08-20T11:42:33+09:00",
   "window": {
     "days": 15,
     "start": "08:00",
@@ -20,7 +20,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-20T10:47:33+09:00",
+          "checked_at": "2026-08-20T11:33:00+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-22&category_id=483&area_id=289",
           "availability": [
             {
@@ -44,7 +44,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-20T10:47:36+09:00",
+          "checked_at": "2026-08-20T11:33:03+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-23&category_id=483&area_id=289",
           "availability": [
             {
@@ -116,7 +116,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-20T10:47:38+09:00",
+          "checked_at": "2026-08-20T11:33:06+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-29&category_id=483&area_id=289",
           "availability": [
             {
@@ -140,7 +140,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-20T10:47:42+09:00",
+          "checked_at": "2026-08-20T11:33:09+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-08-30&category_id=483&area_id=289",
           "availability": [
             {
@@ -203,35 +203,36 @@
           "date": "2026-08-22",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "error",
-          "error_type": "navigation_timeout",
-          "error_message": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#scd029\")\n    - locator resolved to <input value=\"029\" id=\"scd029\" type=\"radio\" name=\"ShisetsuCode\" onchange=\"this.form.submit();\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n; content capture failed: Page.content: Unable to retrieve content because the page is navigating and changing the content.",
-          "checked_at": "2026-08-20T10:47:45+09:00",
+          "status": "success",
+          "error_type": null,
+          "error_message": null,
+          "checked_at": "2026-08-20T11:33:11+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": [],
-          "http_status": 200
+          "availability": []
         },
         {
           "date": "2026-08-23",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-08-20T10:48:21+09:00",
+          "status": "error",
+          "error_type": "navigation_timeout",
+          "error_message": "Locator.wait_for: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"input[name=\\\"ShisetsuCode\\\"]\").first\n    - waiting for\" https://k2.p-kashikan.jp/kagoshima-city/index.php\" navigation to finish...\n; content capture failed: Page.content: Unable to retrieve content because the page is navigating and changing the content.",
+          "checked_at": "2026-08-20T11:33:53+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 200
         },
         {
           "date": "2026-08-29",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-08-20T10:48:54+09:00",
+          "status": "error",
+          "error_type": "navigation_timeout",
+          "error_message": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#scd029\")\n    - locator resolved to <input value=\"029\" id=\"scd029\" type=\"radio\" name=\"ShisetsuCode\" onchange=\"this.form.submit();\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n; content capture failed: Page.content: Unable to retrieve content because the page is navigating and changing the content.",
+          "checked_at": "2026-08-20T11:34:45+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 200
         },
         {
           "date": "2026-08-30",
@@ -240,7 +241,7 @@
           "status": "error",
           "error_type": "navigation_timeout",
           "error_message": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#scd029\")\n    - locator resolved to <input value=\"029\" id=\"scd029\" type=\"radio\" name=\"ShisetsuCode\" onchange=\"this.form.submit();\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n; content capture failed: Page.content: Unable to retrieve content because the page is navigating and changing the content.",
-          "checked_at": "2026-08-20T10:49:45+09:00",
+          "checked_at": "2026-08-20T11:36:14+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [],
           "http_status": 200
@@ -255,12 +256,13 @@
           "date": "2026-08-22",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-08-20T10:51:08+09:00",
+          "status": "error",
+          "error_type": "navigation_timeout",
+          "error_message": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#scd131\")\n    - locator resolved to <input value=\"131\" id=\"scd131\" type=\"radio\" name=\"ShisetsuCode\" onchange=\"this.form.submit();\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n; content capture failed: Page.content: Unable to retrieve content because the page is navigating and changing the content.",
+          "checked_at": "2026-08-20T11:37:37+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 200
         },
         {
           "date": "2026-08-23",
@@ -269,7 +271,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-20T10:51:10+09:00",
+          "checked_at": "2026-08-20T11:39:15+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -277,12 +279,13 @@
           "date": "2026-08-29",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-08-20T10:51:15+09:00",
+          "status": "error",
+          "error_type": "navigation_timeout",
+          "error_message": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#scd131\")\n    - locator resolved to <input value=\"131\" id=\"scd131\" type=\"radio\" name=\"ShisetsuCode\" onchange=\"this.form.submit();\"/>\n  - attempting click action\n    - waiting for element to be visible, enabled and stable\n    - element is visible, enabled and stable\n    - scrolling into view if needed\n    - done scrolling\n    - performing click action\n    - click action done\n    - waiting for scheduled navigations to finish\n; content capture failed: Page.content: Unable to retrieve content because the page is navigating and changing the content.",
+          "checked_at": "2026-08-20T11:39:58+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 200
         },
         {
           "date": "2026-08-30",
@@ -291,7 +294,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-08-20T10:51:18+09:00",
+          "checked_at": "2026-08-20T11:41:30+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
