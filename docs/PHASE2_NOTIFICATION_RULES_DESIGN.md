@@ -270,9 +270,18 @@ Actionsを有効化するにはRepository Variable `ENABLE_NOTIFICATION_MATCHING
 
 現在のスクレイパーは、今日を含む直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を生成する。
 
-通知条件の最低連続時間は30分以上を指定できる。例えば60分以上の取得済み空き候補と通知条件時間帯が30分以上重なり、条件の最低連続時間が30分なら一致し得る。通常の平日や8:00〜13:00外は現在のMonitoring Policyでは取得しないため、その範囲だけを希望する条件には候補が生成されない。平日の曜日を選択していても、その日が日本の祝日として取得対象になっている場合は一致し得る。
+通知条件は現在のMonitoring Policy外でも保存できる。ただし、通常の平日や8:00〜13:00と重ならない時間帯には現在照合対象データがない。条件時間帯が監視時間と一部だけ重なる場合は、その実際の重複時間で最低連続時間を判定する。例えば、最低連続時間30分の条件は、取得済みの60分以上の空き候補と30分以上重なれば一致する。祝日は実際の日付のISO曜日で条件を判定するため、平日の曜日を選択していても、その日が日本の祝日として取得対象であれば一致し得る。
 
-`account/notifications.html` には現行取得範囲の案内を表示している。監視範囲外の条件を保存可能なまま警告するUXと、60分未満を希望する条件の説明はLaunch Readiness GateのMonitoring Policy UXで現在の照合仕様へ整合させる。
+`account/notifications.html` には、現行監視範囲、監視範囲外の条件も保存できること、範囲外には現在照合対象データがないこと、部分的な重なりの判定方法を表示する。新規条件フォームの開始・終了時刻の初期値と、保存済み時刻が不正な場合の `assets/js/notification-rules.js` のfallbackはいずれも08:00〜13:00である。
+
+### 11.1 Production acceptance（2026-08-20）
+
+- PR [#53](https://github.com/mtddzd5vw2-gif/tennis-court-watcher/pull/53)をmainへマージし、main SHA `0a237d90f1e76d23baa1f7ed0ee508fb5797504e` を確認した。
+- `manual-live` run [32332834528](https://github.com/mtddzd5vw2-gif/tennis-court-watcher/actions/runs/32332834528)と、`scheduled-live` run [32333148162](https://github.com/mtddzd5vw2-gif/tennis-court-watcher/actions/runs/32333148162)、[32336448677](https://github.com/mtddzd5vw2-gif/tennis-court-watcher/actions/runs/32336448677)が成功した。
+- 2026-08-20 14:59 JSTにproductionの通知条件画面を確認し、「直近15日間」「現在監視しているのは」「30分以上重なれば一致します」の表示、開始・終了時刻の08:00〜13:00、旧説明「60分未満の条件も保存できますが」が表示されないことを確認した。
+- `assets/js/notification-rules.js` の開始・終了時刻fallbackが08:00〜13:00であることを確認した。
+
+以上によりMonitoring Policy UXのproduction acceptanceをPASSとする。スクレイパー、照合エンジン、データベース、migration、Workflow、production設定の変更はない。
 
 ## 12. migrationの適用とロールバック
 
