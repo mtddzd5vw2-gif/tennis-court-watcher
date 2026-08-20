@@ -43,7 +43,7 @@
 - `.github/workflows/update-availability.yml` はpytest、スクレイピング、診断Artifact、2つのJSONの更新、GitHub Pagesデプロイを行う。
 - Pagesは既存トップと公開JSONに加え、`auth`、`account`、`legal`、`assets` を同じArtifactから配信する。
 - `tests/` はPhase 0回帰に加え、公開設定生成、必須変数、秘密鍵拒否、マジックリンク送信、PKCE callback、セッション確認、ログアウト、console非露出を検証する。
-- Supabase Authのブラウザ接続に加え、会員データベース、RLS、規約同意RPC、通知設定、退会Edge Functionを実装済みである。退会Edge Functionの本番deployとproduction acceptanceは別途確認する。
+- Supabase Authのブラウザ接続に加え、会員データベース、RLS、規約同意RPC、通知設定、退会Edge Functionを実装済みである。退会Edge Functionは2026-08-20に本番deployとproduction acceptanceを完了した。
 - `.gitignore` は `.env` 系、`assets/config/auth-config.js`、secret候補ファイル、Supabase CLI一時状態を除外する。
 
 ### 1.2 Phase 1で守る境界
@@ -92,7 +92,7 @@ Phase 1は次を不変条件とする。
 - `legal_document_versions`、`profiles`、追記専用の `terms_acceptances`、新規ユーザーtrigger、既存ユーザーbackfillをmigration化した。
 - 本人SELECTだけを許可するRLSと、現行規約をDBから取得して同意履歴とprofileを同一トランザクションで更新する引数なしRPCを実装した。
 - ログイン成功時の同意保留marker、callbackでの同意RPC、失敗時のマイページ再同意、profile・同意履歴表示を実装した。
-- 退会は2026-08-19にEdge Functionと二段階確認UIまで実装した。Phase 4のLINE連携と課金は引き続き実装境界外である。
+- 退会は2026-08-19にEdge Functionと二段階確認UIを実装し、2026-08-20に本番deployとproduction acceptanceを完了した。Phase 4のLINE連携と課金は引き続き実装境界外である。
 
 ## 3. Phase 1の対象外
 
@@ -229,7 +229,7 @@ flowchart LR
 │   │   ├── <timestamp>_phase1_auth_schema.sql
 │   │   ├── <timestamp>_phase1_auth_triggers.sql
 │   │   └── <timestamp>_phase1_auth_rls.sql
-│   ├── functions/withdraw-account/index.ts
+│   ├── functions/delete-account/index.ts
 │   └── tests/
 │       ├── auth_schema.test.sql
 │       └── auth_rls.test.sql
@@ -407,7 +407,7 @@ Phase 1で編集可能なプロフィール項目は設けないことを初期�
 
 `unique(user_id, document_type, version)` を設け、再試行で同一同意を重複させない。同意履歴は本人が参照できるが、ブラウザroleへINSERT/UPDATE/DELETEをGrantせず、同意RPCだけが追加する。規約改定時は過去行を上書きしない。
 
-退会後に同意証跡を保持する期間、匿名化方法、法的必要性は**要決定**である。決定前に本番リリースしない。
+現行の退会実装ではAuthユーザーのhard deleteに伴うFK cascadeで同意履歴も削除し、2026-08-20のproduction acceptanceで削除を確認した。バックアップ等に残る同意証跡の保持期間、匿名化方法、法的必要性は一般公開前の法務・プライバシー最終化事項として引き続き**要決定**である。
 
 ## 12. Row Level Securityの方針
 
@@ -465,23 +465,23 @@ using (
 
 ## 14. 退会時のデータ処理
 
-### 14.1 推奨フロー
+### 14.1 実装フロー
 
-1. 利用者が影響、削除対象、保持対象、再登録可否を確認する。
-2. 退会専用マジックリンクの再送など、Supabaseで本人性を再確認する。具体方式は**要決定**。
-3. ブラウザが利用者JWT付きで `withdraw-account` Edge Functionを呼ぶ。
-4. Edge FunctionはJWTを検証し、リクエスト本文の `user_id` を無視して認証主体のIDを使う。
-5. 将来のmigrationで退会日時列と退会専用RLSを追加し、DB関数が `profiles.membership_status=withdrawal_pending` を設定した時点で会員機能を拒否する。
-6. Phase 2以降の通知条件・キューが存在する場合は送信対象から外す。Phase 1にはまだ存在しない。
-7. Edge Functionだけが保持するsecret/service role権限でAuth Adminのユーザー削除を行う。
-8. ハード削除方針なら、FK cascadeで `profiles` と同意履歴を削除する。保持義務がある情報は事前にアクセス制限された非公開スキーマへ最小限・匿名化して移す。
-9. ブラウザは成功・既処理のどちらでもローカルセッションと会員表示を消去し、公開トップへ戻る。
+2026-08-20に次のフローを本番でproduction acceptanceした。
+
+1. 利用者がマイページで退会の影響と削除対象を確認し、二段階確認UIで明示的に実行する。
+2. ブラウザが現在の認証済みセッションのJWT付きで `delete-account` Edge Functionを呼ぶ。退会専用マジックリンク等の追加再認証を要求するかは将来のhardening項目として別途判断する。
+3. Edge FunctionはJWTを `auth.getUser()` で検証し、リクエスト本文から利用者IDを受け取らず、認証主体のIDを使用する。
+4. `profiles.membership_status` を `withdrawal_pending` へ更新してからAuth削除へ進む。service roleにはこの列だけのUPDATE権限を付与する。
+5. active会員だけを対象とする通知条件・通知処理は、退会ロック後の利用者を新規通知対象にしない。
+6. Edge Functionだけが保持するservice role権限で `auth.admin.deleteUser()` を実行する。
+7. Authユーザー削除により、`profiles`、規約同意、通知条件、メール通知関連の利用者所有データをFK cascadeで削除する。
+8. ブラウザは成功後にローカルセッションを破棄し、ログイン画面へ戻る。
 
 ### 14.2 障害と冪等性
 
 - 処理は同じ利用者が再送しても安全な状態遷移にする。
-- Auth削除に失敗した場合も `withdrawal_pending` のままアクセスと通知を停止し、運用者が再試行できるようにする。
-- Authユーザー削除後も、発行済みJWTは有効期限まで暗号学的には有効な場合がある。退会実装時は、会員機能のRLSで `profiles.membership_status='active'` を要求してこの時間差を閉じる。現在のprofile・同意履歴本人SELECTは退会実装前の最小構成である。
+- Auth削除に失敗した場合は `withdrawal_pending` のまま残し、active会員だけを対象とする後続機能・通知から除外して、削除を再試行できるようにする。現在のPhase 1本人SELECTポリシーは `membership_status` を条件にしないため、有効なJWTが残る間のprofile・同意履歴参照は別途hardening対象とする。Auth削除に成功した場合は利用者所有行もFK cascadeで削除される。
 - 退会APIは利用者ID、メールアドレス、JWTをログへ出さず、個人を直接示さない処理IDと成否コードだけを監査する。
 - Supabase Authユーザー削除はサーバー専用処理であり、service role/secret keyをブラウザへ置かない。
 
@@ -687,7 +687,7 @@ Supabase採用、メールのマジックリンク認証、GitHub Pages継続、
 
 ### Step 7: 退会
 
-再認証、`withdraw-account` Edge Function、即時ロック、Auth Admin削除、冪等性、失敗時再試行、監査とRunbookを実装する。
+**実装・本番確認済み。** `delete-account` Edge Function、二段階確認UI、`withdrawal_pending`への先行ロック、Auth Admin hard delete、FK cascade、失敗時再試行方針を実装した。2026-08-20に本番で204応答、ログイン画面への遷移、Authユーザー削除、利用者所有データに孤児レコードが残らないことを確認した。
 
 ### Step 8: 統合・セキュリティ確認
 
@@ -747,7 +747,7 @@ E2E、RLS、漏えい検査、アクセシビリティ、Phase 0回帰、バッ�
 
 ### 退会・運用
 
-- 退会時の再認証方式、即時削除か猶予期間付きか、Authのhard/soft delete
+- 現在の認証済みJWTに加えて、退会専用マジックリンク等の追加再認証を要求するか
 - 同意履歴、監査ログ、バックアップの保持期間・匿名化・消去時期
 - 退会後の同じメールアドレスによる再登録
 - 管理者権限、停止・復旧、問い合わせ本人確認、インシデント対応
@@ -760,7 +760,7 @@ E2E、RLS、漏えい検査、アクセシビリティ、Phase 0回帰、バッ�
 2. 静的PagesからSupabaseへ直接接続するのは公開用キーだけとし、RLSを認可の最終境界にする。
 3. service role/secret keyが必要な退会処理はEdge Functionへ限定する。
 4. 利用規約同意はクライアントUIだけで完結させず、引数なしRPCが `auth.uid()` とDB現行版を取得し、DB時刻の追記専用履歴として保存する。
-5. Authのメール確認と `profiles.membership_status=active` の両方を画面上の会員有効性に使う。退会時の追加ロックは退会実装時に設計する。
+5. Authのメール確認と `profiles.membership_status=active` の両方を画面上の会員有効性に使う。退会時はAuth削除より先に `withdrawal_pending` へロックし、service roleには `membership_status` 列だけのUPDATE権限を付与する。
 6. メールアドレスを `profiles` へ複製せず、GitHub、Pages、Artifact、ログへ個人情報・認証情報を出さない。
 7. GPSは取得・保存・認可に使用しない。
 

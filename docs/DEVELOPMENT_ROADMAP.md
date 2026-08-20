@@ -105,7 +105,7 @@
 - Phase 1完了時点でPhase 0の取得、Pages表示、当時のlegacy LINE通知が回帰テストを含め継続動作した。
 - 本番運用に必要な環境変数、バックアップ、障害対応、退会対応の手順が文書化されている。
 
-### 完了確認（2026-08-06）
+### 完了確認（2026-08-06、退会2026-08-20）
 
 - Supabase Organization Teamに所属していない一般メールアドレスへの送信に成功した。
 - 初回登録のConfirm sign upに成功した。
@@ -114,6 +114,8 @@
 - 本番環境でprofiles、RLS、規約同意履歴が正しく動作することを確認した。
 - Resend EmailsでDeliveredを確認した。
 - 認証メールの設定、秘密情報管理、確認、障害対応を [Auth Email Operations](./AUTH_EMAIL_OPERATIONS.md) に文書化した。
+- 2026-08-20に退会Edge Functionの本番deployとproduction acceptanceを完了した。二段階確認UIからの退会が204で成功し、Authユーザーと関連する利用者所有データが削除され、孤児レコードが残らないことを確認した。
+- production acceptanceで判明した `profiles` の権限不足は、service roleへ `membership_status` 列だけのUPDATE権限を付与するmigrationで修正し、再テストに成功した。
 
 ### 対象外
 
