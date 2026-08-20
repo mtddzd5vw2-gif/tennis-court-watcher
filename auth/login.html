@@ -29,17 +29,12 @@
     <main class="page-shell">
       <div class="auth-layout">
         <section aria-labelledby="page-title">
-          <p class="eyebrow">Phase 1 foundation</p>
-          <h1 id="page-title">メールで、安全にログイン</h1>
+          <p class="eyebrow">会員ログイン</p>
+          <h1 id="page-title">メールでログイン</h1>
           <p class="lead">
-            パスワードを使わず、入力したメールアドレスへ届くマジックリンクから
-            ログインします。初回利用時は同じ流れで会員登録を行います。
+            メールアドレスに届くリンクからログインします。
+            初めて利用する方は、同じ画面から会員登録できます。
           </p>
-          <ul class="feature-list">
-            <li>利用規約への同意を確認してから登録</li>
-            <li>メールアドレスの確認とログインを一つのリンクで実施</li>
-            <li>通知条件やLINE連携、課金はこのPhaseでは扱いません</li>
-          </ul>
         </section>
 
         <section class="panel" aria-labelledby="form-title">
@@ -63,13 +58,28 @@
           <p class="notice">
             マジックリンクは、原則としてこの画面を開いた同じブラウザで開いてください。
           </p>
-          <h2 id="form-title">マジックリンクを受け取る</h2>
+          <h2 id="form-title" data-auth-form-title>ログイン用リンクを受け取る</h2>
           <form data-auth-form novalidate hidden>
-            <p class="session-guidance">
-              一度ログインすると、このブラウザではログイン状態が保持されます。
-              共有端末では、利用後にログアウトしてください。
-              ログアウト、ブラウザデータの削除、セッションの無効化などの場合は
-              再ログインが必要です。
+            <div class="auth-mode-switch" aria-label="ログインまたは会員登録">
+              <button
+                class="auth-mode-button"
+                type="button"
+                data-auth-mode="login"
+                aria-pressed="true"
+              >
+                ログイン
+              </button>
+              <button
+                class="auth-mode-button"
+                type="button"
+                data-auth-mode="signup"
+                aria-pressed="false"
+              >
+                初めての方
+              </button>
+            </div>
+            <p class="session-guidance" data-auth-mode-guidance>
+              登録済みのメールアドレスを入力してください。
             </p>
             <div class="field">
               <label for="email">メールアドレス</label>
@@ -83,28 +93,34 @@
                 required
               >
             </div>
-            <label class="consent" for="terms-consent">
-              <input id="terms-consent" name="terms-consent" type="checkbox" required>
-              <span>
-                初めて登録する場合は、
-                <a href="../legal/terms.html">利用規約（暫定案）</a>と
-                <a href="../legal/privacy.html">プライバシーポリシー（暫定案）</a>
-                を確認し、利用規約に同意します。
-              </span>
-            </label>
+            <div data-signup-consent hidden>
+              <label class="consent" for="terms-consent">
+                <input
+                  id="terms-consent"
+                  name="terms-consent"
+                  type="checkbox"
+                  disabled
+                >
+                <span>
+                  <a href="../legal/terms.html">利用規約</a>と
+                  <a href="../legal/privacy.html">プライバシーポリシー</a>
+                  を確認し、利用規約に同意します。
+                </span>
+              </label>
+            </div>
             <button
               class="button"
               type="submit"
               disabled
               aria-describedby="form-note persistent-session-note"
             >
-              マジックリンクを送る
+              ログイン用リンクを送る
             </button>
             <p id="persistent-session-note" class="form-note session-note">
-              通常、次回以降は同じブラウザでマジックリンクを再送する必要はありません。
+              共有端末では、利用後にログアウトしてください。
             </p>
-            <p id="form-note" class="form-note">
-              有効なメールアドレスを入力し、利用規約への同意を確認すると送信できます。
+            <p id="form-note" class="form-note" data-auth-form-note>
+              有効なメールアドレスを入力すると送信できます。
             </p>
             <p class="status-text" data-form-status aria-live="polite"></p>
           </form>

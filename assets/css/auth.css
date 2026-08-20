@@ -292,6 +292,30 @@ h3 {
   font-size: 0.92rem;
 }
 
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.auth-mode-button {
+  min-height: 2.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.8rem;
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-mode-button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: var(--success-bg);
+}
+
 .session-note {
   margin-top: 0.75rem;
 }
@@ -364,6 +388,12 @@ h3 {
   margin-top: 0.45rem;
 }
 
+.account-email {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
 .definition-list {
   display: grid;
   grid-template-columns: minmax(8rem, 0.7fr) 1.3fr;
@@ -431,6 +461,27 @@ h3 {
 
 .email-notification-preference {
   margin-bottom: 1.5rem;
+}
+
+.monitoring-guidance > p {
+  margin: 0;
+}
+
+.monitoring-guidance details {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.monitoring-guidance summary {
+  width: fit-content;
+  color: var(--accent-dark);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.monitoring-guidance details p {
+  margin-block: 0.65rem 0;
 }
 
 .notification-toolbar h2,

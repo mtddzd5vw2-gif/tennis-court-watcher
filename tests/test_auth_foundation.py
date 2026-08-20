@@ -418,12 +418,23 @@ def test_auth_pages_load_only_pinned_supabase_sdk_and_do_not_submit_forms() -> N
 
     login = BeautifulSoup(read("auth/login.html"), "html.parser")
     assert login.find("input", {"type": "email"})
-    assert login.find("input", {"name": "terms-consent"})
+    consent = login.find("input", {"name": "terms-consent"})
+    assert consent.has_attr("disabled")
+    assert not consent.has_attr("required")
+    mode_buttons = login.find_all("button", {"data-auth-mode": True})
+    assert [button["data-auth-mode"] for button in mode_buttons] == [
+        "login",
+        "signup",
+    ]
+    assert [button["aria-pressed"] for button in mode_buttons] == ["true", "false"]
     assert login.find("button", {"type": "submit"}).has_attr("disabled")
     assert login.find("form", {"data-auth-form": True}).has_attr("hidden")
     session_status = login.find(attrs={"data-login-session-status": True})
     assert session_status["aria-live"] == "polite"
     assert login.find("noscript")
+    login_text = login.get_text(" ", strip=True)
+    assert "Phase" not in login_text
+    assert "課金" not in login_text
 
 
 def test_auth_script_uses_pkce_and_does_not_log_credentials() -> None:
@@ -445,6 +456,35 @@ def test_auth_script_uses_pkce_and_does_not_log_credentials() -> None:
     assert "refresh_token" not in script.lower()
     assert "console." not in script
     assert "fetch(" not in script
+
+
+def test_member_pages_hide_internal_status_and_development_language() -> None:
+    login = BeautifulSoup(read("auth/login.html"), "html.parser")
+    account = BeautifulSoup(read("account/index.html"), "html.parser")
+    script = read("assets/js/auth-foundation.js")
+
+    login_text = login.get_text(" ", strip=True)
+    assert "Phase" not in login_text
+    assert "課金" not in login_text
+    assert login.find(attrs={"data-auth-mode": "login"})
+    assert login.find(attrs={"data-auth-mode": "signup"})
+    assert "shouldCreateUser: requestMode === \"signup\"" in script
+
+    account_text = account.get_text(" ", strip=True)
+    assert "アカウント状態" not in account_text
+    assert "会員登録日時" not in account_text
+    assert "最新の規約同意日時" not in account_text
+    assert not account.find(id="terms-history-title")
+    assert account.find(attrs={"data-account-email": True})
+    for selector in (
+        "data-account-email-verified",
+        "data-membership-status",
+        "data-account-created-at",
+        "data-latest-terms-version",
+        "data-latest-terms-accepted-at",
+        "data-terms-history",
+    ):
+        assert not account.find(attrs={selector: True})
 
 
 def test_legal_pages_are_explicitly_drafts_requiring_review() -> None:
@@ -890,7 +930,7 @@ def test_existing_phase_zero_page_and_public_json_contract_remain() -> None:
     assert not (ROOT / "data/notification-state.json").exists()
 
 
-def test_magic_link_submission_validates_input_prevents_duplicates_and_is_neutral(
+def test_login_magic_link_validates_input_prevents_duplicates_and_is_neutral(
     auth_page_loader,
 ) -> None:
     page, messages = auth_page_loader(
@@ -898,12 +938,10 @@ def test_magic_link_submission_validates_input_prevents_duplicates_and_is_neutra
         {"delay": 30},
     )
     email = page.locator('input[name="email"]')
-    consent = page.locator('input[name="terms-consent"]')
     submit = page.locator('button[type="submit"]')
 
     assert submit.is_disabled()
     email.fill("not-an-email")
-    consent.check()
     assert submit.is_disabled()
 
     email.fill("member@example.test")
@@ -926,7 +964,8 @@ def test_magic_link_submission_validates_input_prevents_duplicates_and_is_neutra
                 "options": {
                     "emailRedirectTo": (
                         "http://pages.test/project/auth/callback.html"
-                    )
+                    ),
+                    "shouldCreateUser": False,
                 },
             },
         }
@@ -937,10 +976,10 @@ def test_magic_link_submission_validates_input_prevents_duplicates_and_is_neutra
     assert messages == []
     stored = page.evaluate(
         """Object.fromEntries(
-          Object.entries(sessionStorage).filter(([key]) => key.startsWith("tcw."))
+      Object.entries(sessionStorage).filter(([key]) => key.startsWith("tcw."))
         )"""
     )
-    assert stored == {"tcw.pendingTermsAcceptance": "1"}
+    assert stored == {}
     assert "member@example.test" not in json.dumps(stored)
 
     arguments = page.evaluate("window.__clientArguments")
@@ -952,6 +991,47 @@ def test_magic_link_submission_validates_input_prevents_duplicates_and_is_neutra
         "autoRefreshToken": True,
         "detectSessionInUrl": False,
     }
+
+
+def test_signup_requires_terms_consent_and_marks_pending_acceptance(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader("auth/login.html")
+    page.locator('[data-auth-mode="signup"]').click()
+
+    email = page.locator('input[name="email"]')
+    consent = page.locator('input[name="terms-consent"]')
+    submit = page.locator('button[type="submit"]')
+
+    assert page.locator("[data-signup-consent]").is_visible()
+    assert consent.is_enabled()
+    assert submit.inner_text() == "会員登録用リンクを送る"
+    email.fill("new-member@example.test")
+    assert submit.is_disabled()
+    consent.check()
+    assert submit.is_enabled()
+    submit.click()
+    page.locator('[data-form-status][data-state="success"]').wait_for()
+
+    assert page.evaluate("window.__authCalls") == [
+        {"method": "getSession"},
+        {
+            "method": "signInWithOtp",
+            "payload": {
+                "email": "new-member@example.test",
+                "options": {
+                    "emailRedirectTo": (
+                        "http://pages.test/project/auth/callback.html"
+                    ),
+                    "shouldCreateUser": True,
+                },
+            },
+        },
+    ]
+    assert page.evaluate(
+        'window.sessionStorage.getItem("tcw.pendingTermsAcceptance")'
+    ) == "1"
+    assert messages == []
 
 
 def test_login_checks_session_before_revealing_form_and_shows_it_when_absent(
@@ -1016,7 +1096,6 @@ def test_login_session_check_failure_keeps_magic_link_form_usable(
     status = page.locator('[data-login-session-status][data-state="error"]')
     assert "ログイン状態を確認できませんでした" in status.inner_text()
     page.locator('input[name="email"]').fill("member@example.test")
-    page.locator('input[name="terms-consent"]').check()
     page.locator('button[type="submit"]').click()
     page.locator('[data-form-status][data-state="success"]').wait_for()
 
@@ -1224,18 +1303,16 @@ def test_pending_terms_account_requires_explicit_consent_and_refreshes(
     panel.wait_for(state="visible")
     button = page.locator("[data-accept-current-terms]")
 
-    assert page.locator("[data-membership-status]").inner_text() == "pending_terms"
     assert button.is_disabled()
     page.locator("[data-account-terms-consent]").check()
     assert button.is_enabled()
     button.click()
     page.locator('[data-action-status][data-state="success"]').wait_for()
 
-    assert page.locator("[data-membership-status]").inner_text() == "active"
     assert panel.is_hidden()
-    assert page.locator("[data-latest-terms-version]").inner_text() == (
-        "2026-08-04-draft"
-    )
+    assert "利用規約への同意を登録しました" in page.locator(
+        '[data-action-status][data-state="success"]'
+    ).inner_text()
     assert messages == []
 
 
@@ -1248,11 +1325,18 @@ def test_active_account_uses_rls_queries_without_another_user_id(
     )
     page.locator("[data-account-loading]").wait_for(state="hidden")
 
-    assert page.locator("[data-account-email-verified]").inner_text() == "認証済み"
-    assert page.locator("[data-membership-status]").inner_text() == "active"
-    assert page.locator("[data-latest-terms-version]").inner_text() == (
-        "2026-08-04-draft"
+    assert page.locator("[data-account-email]").inner_text() == (
+        "member@example.test"
     )
+    for selector in (
+        "[data-account-email-verified]",
+        "[data-membership-status]",
+        "[data-account-created-at]",
+        "[data-latest-terms-version]",
+        "[data-latest-terms-accepted-at]",
+        "[data-terms-history]",
+    ):
+        assert page.locator(selector).count() == 0
     assert page.locator("[data-terms-consent-panel]").is_hidden()
     data_calls = page.evaluate("window.__dataCalls")
     member_calls = [
@@ -1265,6 +1349,12 @@ def test_active_account_uses_rls_queries_without_another_user_id(
         for call in member_calls
         for filter_item in call["filters"]
     )
+    profile_call = next(call for call in data_calls if call["table"] == "profiles")
+    terms_call = next(
+        call for call in data_calls if call["table"] == "terms_acceptances"
+    )
+    assert profile_call["columns"] == "membership_status"
+    assert terms_call["columns"] == "document_type,version"
     assert messages == []
 
 

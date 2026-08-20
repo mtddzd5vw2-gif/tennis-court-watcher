@@ -164,13 +164,13 @@ def test_notification_page_explains_the_current_acquisition_scope() -> None:
 
     for expected in (
         "直近15日間",
-        "土日・日本の祝日",
+        "土日・祝日",
         "8:00〜13:00",
+        "通常の平日は現在通知されません",
         "連続60分以上",
         "監視範囲外でも保存できます",
-        "通常の平日",
         "重ならない時間帯",
-        "重なった時間",
+        "実際に重なった時間",
         "最低連続時間30分",
         "30分以上重なれば一致",
         "実際の日付の曜日",
@@ -178,6 +178,10 @@ def test_notification_page_explains_the_current_acquisition_scope() -> None:
         assert expected in text
 
     assert "60分未満の条件も保存できますが" not in text
+    details = guidance.find("details")
+    assert details
+    assert not details.has_attr("open")
+    assert details.find("summary").get_text(strip=True) == "詳しい条件"
     assert not notifications.find("input", attrs={"name": "holiday"})
 
 

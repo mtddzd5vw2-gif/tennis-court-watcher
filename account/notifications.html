@@ -32,8 +32,7 @@
           <p class="eyebrow">Notification rules</p>
           <h1>通知条件</h1>
           <p class="lead">
-            空き状況を探す施設・曜日・期間・時間帯を登録できます。
-            登録直後は停止中にして、内容を確認してから有効化できます。
+            空きを知らせてほしい施設・曜日・時間帯を登録できます。
           </p>
         </div>
         <div class="page-links" aria-label="ページ移動">
@@ -82,15 +81,23 @@
           ></p>
         </section>
 
-        <div class="notice" aria-label="現在の空き取得範囲">
-          現在監視しているのは、直近15日間の土日・日本の祝日の8:00〜13:00です。
-          取得する空き枠は連続60分以上です。通知条件は監視範囲外でも保存できます。
-          通常の平日や8:00〜13:00と重ならない時間帯は、
-          現時点では照合対象の空きデータがありません。
-          監視時間と一部だけ重なる条件は、その重なった時間で最低連続時間を判定します。
-          そのため最低連続時間30分の条件も、
-          取得済みの60分以上の空き枠と30分以上重なれば一致します。
-          祝日は、実際の日付の曜日で条件を判定します。
+        <div class="notice monitoring-guidance" aria-label="現在の空き取得範囲">
+          <p>
+            現在は、直近15日間の土日・祝日、8:00〜13:00の空きを確認しています。
+            通常の平日は現在通知されません。
+          </p>
+          <details>
+            <summary>詳しい条件</summary>
+            <p>
+              取得する空き枠は連続60分以上です。通知条件は監視範囲外でも保存できますが、
+              通常の平日や8:00〜13:00と重ならない時間帯には、現在照合対象データがありません。
+            </p>
+            <p>
+              監視時間と一部だけ重なる場合は、実際に重なった時間で最低連続時間を判定します。
+              最低連続時間30分の条件も、取得済みの空き枠と30分以上重なれば一致します。
+              祝日は実際の日付の曜日で判定します。
+            </p>
+          </details>
         </div>
 
         <div class="notification-toolbar">
@@ -133,8 +140,7 @@
             新しい通知条件
           </h2>
           <p class="form-note">
-            施設と曜日はそれぞれ1件以上選択してください。
-            日付を空欄にすると、その方向の期間制限はありません。
+            施設と曜日をそれぞれ1件以上選択してください。
           </p>
 
           <form data-notification-rule-form novalidate>
@@ -181,6 +187,9 @@
               tabindex="-1"
             >
               <legend>曜日</legend>
+              <p class="form-note">
+                通常の平日は現在通知されません。祝日は実際の曜日を選択してください。
+              </p>
               <div class="checkbox-grid checkbox-grid--weekdays">
                 <label class="check-option">
                   <input type="checkbox" name="weekdays" value="1" data-rule-weekday>
@@ -283,7 +292,7 @@
                 required
                 data-rule-minimum-duration
               >
-              <p class="form-note">30〜720分の範囲で、30分単位で指定してください。取得する空き枠自体は60分以上ですが、30分条件も空き枠との重なりが30分以上あれば一致します。</p>
+              <p class="form-note">30〜720分の範囲で、30分単位で指定できます。</p>
             </div>
 
             <label class="check-option check-option--enabled">
