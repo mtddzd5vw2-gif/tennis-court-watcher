@@ -8,6 +8,10 @@ INDEX = FUNCTION_DIR / "index.ts"
 CONFIG = ROOT / "supabase/config.toml"
 ACCOUNT_HTML = ROOT / "account/index.html"
 AUTH_SCRIPT = ROOT / "assets/js/auth-foundation.js"
+PROFILE_GRANT_MIGRATION = (
+    ROOT
+    / "supabase/migrations/20260819100000_grant_account_deletion_profile_lock.sql"
+)
 
 
 def read(path: Path) -> str:
@@ -74,3 +78,14 @@ def test_account_ui_requires_explicit_second_confirmation() -> None:
     assert 'confirmation: "delete-my-account"' in script
     assert "user_id" not in script
     assert "deleteConfirm.disabled" in script
+
+
+def test_delete_account_service_role_has_only_required_profile_update() -> None:
+    migration = read(PROFILE_GRANT_MIGRATION)
+
+    assert "grant update (membership_status)" in migration
+    assert "on table public.profiles" in migration
+    assert "to service_role;" in migration
+    assert "grant update on table public.profiles" not in migration
+    assert "to authenticated" not in migration
+    assert "to anon" not in migration
