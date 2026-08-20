@@ -100,8 +100,13 @@ window.supabase = {
           window.__authCalls.push({ method: "signInWithOtp", payload });
           window.sessionStorage.setItem("mock-sign-in-called", "true");
           return new Promise((resolve) => {
+            const signInError = mock.signInError
+              ? (typeof mock.signInError === "object"
+                  ? mock.signInError
+                  : { name: "AuthError" })
+              : null;
             window.setTimeout(
-              () => resolve({ error: mock.signInError ? { name: "AuthError" } : null }),
+              () => resolve({ error: signInError }),
               mock.delay || 0,
             );
           });
@@ -1031,6 +1036,51 @@ def test_signup_requires_terms_consent_and_marks_pending_acceptance(
     assert page.evaluate(
         'window.sessionStorage.getItem("tcw.pendingTermsAcceptance")'
     ) == "1"
+    assert messages == []
+
+
+def test_unknown_login_account_uses_neutral_success_message(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "auth/login.html",
+        {
+            "signInError": {
+                "name": "AuthApiError",
+                "status": 422,
+                "code": "otp_disabled",
+            }
+        },
+    )
+    page.locator('input[name="email"]').fill("unknown@example.test")
+    page.locator('button[type="submit"]').click()
+    status = page.locator('[data-form-status][data-state="success"]')
+    status.wait_for()
+
+    assert "リンクを送信できる場合" in status.inner_text()
+    assert "unknown@example.test" not in status.inner_text()
+    assert messages == []
+
+
+def test_login_service_error_is_not_reported_as_success(auth_page_loader) -> None:
+    page, messages = auth_page_loader(
+        "auth/login.html",
+        {
+            "signInError": {
+                "name": "AuthRetryableFetchError",
+                "status": 503,
+                "code": "unexpected_failure",
+            }
+        },
+    )
+    page.locator('input[name="email"]').fill("member@example.test")
+    submit = page.locator('button[type="submit"]')
+    submit.click()
+    status = page.locator('[data-form-status][data-state="error"]')
+    status.wait_for()
+
+    assert "送信を完了できませんでした" in status.inner_text()
+    assert submit.is_enabled()
     assert messages == []
 
 

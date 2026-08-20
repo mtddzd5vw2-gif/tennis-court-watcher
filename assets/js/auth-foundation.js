@@ -84,6 +84,15 @@
     }
   }
 
+  function isMissingLoginAccount(error, requestMode) {
+    return (
+      requestMode === "login" &&
+      error &&
+      error.status === 422 &&
+      error.code === "otp_disabled"
+    );
+  }
+
   function enableLoginForm(client, config, form) {
     const emailInput = form.elements.email;
     const consentInput = form.elements["terms-consent"];
@@ -172,7 +181,7 @@
           },
         })
         .then(({ error }) => {
-          if (error && requestMode === "signup") {
+          if (error && !isMissingLoginAccount(error, requestMode)) {
             throw new Error("magic_link_request_failed");
           }
           if (requestMode === "signup") {
