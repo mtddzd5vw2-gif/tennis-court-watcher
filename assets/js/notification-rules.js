@@ -603,8 +603,8 @@
       nameInput.value = rule.name;
       dateFromInput.value = rule.date_from || "";
       dateToInput.value = rule.date_to || "";
-      startTimeInput.value = normalizeTimeInput(rule.start_time, "09:00");
-      endTimeInput.value = normalizeTimeInput(rule.end_time, "21:00");
+      startTimeInput.value = normalizeTimeInput(rule.start_time, "08:00");
+      endTimeInput.value = normalizeTimeInput(rule.end_time, "13:00");
       minimumDurationInput.value = String(rule.minimum_duration_minutes);
       enabledInput.checked = rule.is_enabled;
 

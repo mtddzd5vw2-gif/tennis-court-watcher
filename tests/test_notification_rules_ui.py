@@ -105,8 +105,8 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
     duration = form.find(
         "input", attrs={"data-rule-minimum-duration": True}
     )
-    assert (start_time["type"], start_time["value"]) == ("time", "09:00")
-    assert (end_time["type"], end_time["value"]) == ("time", "21:00")
+    assert (start_time["type"], start_time["value"]) == ("time", "08:00")
+    assert (end_time["type"], end_time["value"]) == ("time", "13:00")
     assert duration["value"] == "60"
     assert duration["min"] == "30"
     assert duration["max"] == "720"
@@ -163,17 +163,21 @@ def test_notification_page_explains_the_current_acquisition_scope() -> None:
     text = guidance.get_text(" ", strip=True)
 
     for expected in (
+        "直近15日間",
         "土日・日本の祝日",
         "8:00〜13:00",
-        "60分以上",
-        "平日",
-        "時間外",
-        "60分未満",
-        "保存できます",
-        "一致しません",
+        "連続60分以上",
+        "監視範囲外でも保存できます",
+        "通常の平日",
+        "重ならない時間帯",
+        "重なった時間",
+        "最低連続時間30分",
+        "30分以上重なれば一致",
         "実際の日付の曜日",
     ):
         assert expected in text
+
+    assert "60分未満の条件も保存できますが" not in text
     assert not notifications.find("input", attrs={"name": "holiday"})
 
 
@@ -192,6 +196,8 @@ def test_notification_script_uses_existing_auth_contract_and_session_identity() 
     assert 'membership_status !== "active"' in script
     assert "membershipRequired.hidden = false" in script
     assert "URLSearchParams" not in script
+    assert 'normalizeTimeInput(rule.start_time, "08:00")' in script
+    assert 'normalizeTimeInput(rule.end_time, "13:00")' in script
 
     for table in (
         "notification_rules",

@@ -83,9 +83,13 @@
         </section>
 
         <div class="notice" aria-label="現在の空き取得範囲">
-          現在取得している空きは、土日・日本の祝日の8:00〜13:00で、
-          60分以上の枠です。平日・時間外・60分未満の条件も保存できますが、
-          現時点では該当する空きデータを取得しないため一致しません。
+          現在監視しているのは、直近15日間の土日・日本の祝日の8:00〜13:00です。
+          取得する空き枠は連続60分以上です。通知条件は監視範囲外でも保存できます。
+          通常の平日や8:00〜13:00と重ならない時間帯は、
+          現時点では照合対象の空きデータがありません。
+          監視時間と一部だけ重なる条件は、その重なった時間で最低連続時間を判定します。
+          そのため最低連続時間30分の条件も、
+          取得済みの60分以上の空き枠と30分以上重なれば一致します。
           祝日は、実際の日付の曜日で条件を判定します。
         </div>
 
@@ -242,7 +246,7 @@
                     id="notification-rule-start-time"
                     name="start_time"
                     type="time"
-                    value="09:00"
+                    value="08:00"
                     step="1800"
                     required
                     data-rule-start-time
@@ -254,7 +258,7 @@
                     id="notification-rule-end-time"
                     name="end_time"
                     type="time"
-                    value="21:00"
+                    value="13:00"
                     step="1800"
                     required
                     data-rule-end-time
@@ -279,7 +283,7 @@
                 required
                 data-rule-minimum-duration
               >
-              <p class="form-note">30〜720分の範囲で、30分単位で指定してください。</p>
+              <p class="form-note">30〜720分の範囲で、30分単位で指定してください。取得する空き枠自体は60分以上ですが、30分条件も空き枠との重なりが30分以上あれば一致します。</p>
             </div>
 
             <label class="check-option check-option--enabled">
