@@ -48,7 +48,7 @@ Phase 0〜3で技術MVPは成立した。
 Phase 4の本格実装と鹿児島β公開へ進む前に、次のLaunch Readinessを完了する。
 
 1. **ドキュメント整合性整理** — 完了（2026-08-20）
-2. **退会failure-path hardening** — `withdrawal_pending` のままAuth削除に失敗した場合の本人参照権限を整理する
+2. **退会failure-path hardening** — 完了（2026-08-20）。Auth削除失敗時も `withdrawal_pending` 利用者の本人profile・同意履歴をRLSで非表示にし、`accept_current_terms()` を拒否する。profile行ロックで規約同意と退会ロックを直列化し、本番適用・検証済み
 3. **利用規約・Privacy・運営者/問い合わせ先の確定** — 一般公開可能な正式版へ更新する
 4. **各予約サイトの利用規約・アクセス頻度最終確認** — 取得可否と適切なアクセス頻度を記録する
 5. **GitHub Actions外部ActionのSHA pinning** — supply-chain riskを低減する

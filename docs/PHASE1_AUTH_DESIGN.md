@@ -302,7 +302,7 @@ sequenceDiagram
 - 認証後の `accept_current_terms()` は引数を取らず、`auth.uid()` とDB上の現行規約版を使用する。
 - 同意履歴追加とprofileの規約情報更新を同一RPCトランザクションで行い、`pending_terms` の場合だけ `active` へ遷移させる。同一版への再実行は一意制約と `ON CONFLICT DO NOTHING` で冪等にする。
 - `accepted_at` をクライアントから受け取らず、DBの `timestamptz` デフォルトで記録する。
-- メール認証完了は `auth.users.email_confirmed_at` を正とし、同意RPC成功時に `pending_terms` だけを `active` にする。規約同意は `suspended` や `withdrawal_pending` を解除せず、`active` はそのまま維持する。
+- メール認証完了は `auth.users.email_confirmed_at` を正とし、同意RPC成功時に `pending_terms` だけを `active` にする。規約同意は `suspended` を解除せず、`withdrawal_pending` はprofile行をロックしたうえで処理を拒否し、`active` はそのまま維持する。
 - trigger障害は登録自体を止め得るため、ローカル・ステージングで異常系まで検証してから本番反映する。
 
 ### 8.2 エラー表示
@@ -436,6 +436,13 @@ to authenticated
 using (
   (select auth.uid()) is not null
   and (select auth.uid()) = id
+  and membership_status = any (
+    array[
+      'pending_terms'::public.membership_status,
+      'active'::public.membership_status,
+      'suspended'::public.membership_status
+    ]
+  )
 );
 ```
 
@@ -446,17 +453,24 @@ RLSは行を制限するが列を制限しない。そのため、Phase 1に利�
 ```sql
 alter table public.terms_acceptances enable row level security;
 
-create policy terms_acceptances_select_own_active
+create policy terms_acceptances_select_own
 on public.terms_acceptances
 for select
 to authenticated
 using (
-  (select auth.uid()) = user_id
+  (select auth.uid()) is not null
+  and (select auth.uid()) = user_id
   and exists (
     select 1
-    from public.profiles p
-    where p.user_id = (select auth.uid())
-      and p.status = 'active'
+    from public.profiles as profile
+    where profile.id = (select auth.uid())
+      and profile.membership_status = any (
+        array[
+          'pending_terms'::public.membership_status,
+          'active'::public.membership_status,
+          'suspended'::public.membership_status
+        ]
+      )
   )
 );
 ```
@@ -481,7 +495,7 @@ using (
 ### 14.2 障害と冪等性
 
 - 処理は同じ利用者が再送しても安全な状態遷移にする。
-- Auth削除に失敗した場合は `withdrawal_pending` のまま残し、active会員だけを対象とする後続機能・通知から除外して、削除を再試行できるようにする。現在のPhase 1本人SELECTポリシーは `membership_status` を条件にしないため、有効なJWTが残る間のprofile・同意履歴参照は別途hardening対象とする。Auth削除に成功した場合は利用者所有行もFK cascadeで削除される。
+- Auth削除に失敗した場合は `withdrawal_pending` のまま残し、active会員だけを対象とする後続機能・通知から除外して、削除を再試行できるようにする。2026-08-20のhardeningで本人SELECTポリシーもfail-closedとし、有効なJWTが残っていてもprofile・同意履歴を参照できない。`accept_current_terms()` もprofile行を `FOR UPDATE` でロックして `withdrawal_pending` を書込み前に拒否する。Auth削除に成功した場合は利用者所有行もFK cascadeで削除される。
 - 退会APIは利用者ID、メールアドレス、JWTをログへ出さず、個人を直接示さない処理IDと成否コードだけを監査する。
 - Supabase Authユーザー削除はサーバー専用処理であり、service role/secret keyをブラウザへ置かない。
 
@@ -607,7 +621,7 @@ Resend APIキーはSMTP passwordとして使用するが、その値を文書や
 | 本人A・active | Aだけ参照 | Aだけ参照 | 参照可 |
 | 本人B・active | Aを参照・更新不可 | Aを参照不可 | 参照可 |
 | 未認証相当 | 会員データ不可 | 会員データ不可 | 参照可 |
-| `withdrawal_pending` | 本人行を参照可 | 本人履歴を参照可 | current termsを参照可 |
+| `withdrawal_pending` | 本人行を参照不可 | 本人履歴を参照不可 | current termsを参照可 |
 
 さらに次を検証する。
 
