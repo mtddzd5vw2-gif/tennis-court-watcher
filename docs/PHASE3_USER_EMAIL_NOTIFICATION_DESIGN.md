@@ -1,5 +1,18 @@
 # Phase 3 利用者別メール通知キュー・配信ライフサイクル設計
 
+## 0. 文書の読み方と現在状態
+
+Phase 3は2026-08-19にproduction acceptanceまで完了した。
+
+本書にはPhase 3.1から3.5cまでを段階導入した際の
+「今回のPR」「後続PR」「legacy LINEを維持する」等の歴史的記述を意図的に残す。
+現在状態を判断するときは本節、Development Roadmap、
+および各Phase 3 Runbookを正とする。
+
+現在、Phase 0の単一通知先legacy LINE経路はPhase 3.4.3で退役済みである。
+管理者も一般会員と同じ利用者別notification pipelineを利用する。
+Phase 4ではこのlegacy経路を復活させず、会員共通の利用者別LINE通知を追加する。
+
 ## 1. 目的と今回の境界
 
 Phase 3は、Phase 2の照合結果を利用者別メール通知へ安全に引き渡すためのDBキュー基盤を対象とする。利用者別LINE通知はPhase 4で扱う。このキュー基盤の構築中は、Phase 0から稼働している既存管理者向けLINE通知を通知先、状態管理、再試行、workflowを含めて変更せず、安全なfallbackとして維持する。ただしこれはlegacy notification pathであり、Phase 3の自動メール配信が本番で安定した後に停止・削除する。
@@ -39,10 +52,10 @@ flowchart LR
     W["署名検証webhook"]
     P["provider events"]
     U["Supabase Auth<br>メールアドレスの正"]
-    L["既存管理者向けLINE通知"]
+    L["legacy LINE通知<br>Phase 3.4.3で退役"]
 
     A --> M
-    A --> L
+    A -. "Phase 3.4.3まで" .-> L
     M -->|"利用者別候補。詳細は保存・ログ出力しない"| E
     E --> D
     E --> Q

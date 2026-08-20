@@ -5,7 +5,7 @@
 | 項目 | 内容 |
 | --- | --- |
 | 対象 | Tennis Court Watcher Phase 1 会員基盤 |
-| 状態 | Phase 1完成済み。Supabase Authマジックリンク・PKCE、会員profile、規約版・同意履歴、RLS、同意RPC、最小限のマイページ、Resend Custom SMTPによる日本語認証メールを本番確認済み |
+| 状態 | Phase 1完成済み。Supabase Authマジックリンク・PKCE、会員profile、規約版・同意履歴、RLS、同意RPC、最小限のマイページ、Resend Custom SMTPによる日本語認証メール、退会Edge Functionを本番確認済み |
 | 作成日 | 2026-08-04 |
 | 方針決定日 | 2026-08-04 |
 | 前提文書 | [Project Vision](./PROJECT_VISION.md)、[Development Roadmap](./DEVELOPMENT_ROADMAP.md)、[Service Specification](./SERVICE_SPECIFICATION.md)、[Auth Email Operations](./AUTH_EMAIL_OPERATIONS.md) |
@@ -485,9 +485,19 @@ using (
 - 退会APIは利用者ID、メールアドレス、JWTをログへ出さず、個人を直接示さない処理IDと成否コードだけを監査する。
 - Supabase Authユーザー削除はサーバー専用処理であり、service role/secret keyをブラウザへ置かない。
 
-### 14.3 リリース前の決定事項
+### 14.3 一般公開前に残る決定事項
 
-ハード削除かソフト削除か、同意履歴・監査・バックアップの保持期間、バックアップからの消去時期、再登録時の扱い、退会猶予期間は**要決定**である。これらをプライバシーポリシーと運用Runbookへ反映するまで退会機能を本番公開しない。
+現行実装はAuthユーザーの即時hard deleteとFK cascadeを採用し、
+2026-08-20にproduction acceptanceを完了した。
+hard deleteかsoft deleteか、退会猶予期間を設けるかは現行実装については決定済みである。
+
+一般公開前に残る事項は、同意証跡・監査・バックアップの保持期間、
+バックアップからの消去時期、同じメールアドレスによる再登録、
+現在の認証済みJWTに加えて追加再認証を要求するか、
+法的に保持が必要な情報の有無である。
+
+これらはLaunch Readinessで最終化し、
+プライバシーポリシーと運用Runbookへ反映する。
 
 ## 15. 環境変数・設定値の管理方法
 

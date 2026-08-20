@@ -5,6 +5,18 @@
 本書は、[Project Vision](./PROJECT_VISION.md)を段階的に実現するための開発計画である。
 各Phaseの開始前に、直前のPhaseで得られた利用状況、運用負荷、通知品質を確認し、優先順位を見直す。
 
+文書間の責務は次のとおりとする。
+
+- `PROJECT_VISION.md`: 長期的な目的・価値・展開方針
+- `SERVICE_SPECIFICATION.md`: 現在利用者へ提供しているサービス仕様の正
+- `DEVELOPMENT_ROADMAP.md`: 現在地、実装順序、完了条件、次の作業の正
+- `PHASE*_DESIGN.md`: 各Phaseの詳細設計と実装時点の履歴
+- 各Runbook: 現在の本番運用・障害対応手順の正
+- `README.md`: プロジェクト入口と現在機能の要約
+
+Phase設計書に残る「今回」「後続PR」「未実装」等の記述は、
+明示的に履歴として扱う場合を除き、現在仕様の判断には使用しない。
+
 ## 開発方針
 
 - 最初の提供地域と施設種別は、鹿児島市のテニスコートに限定する。
@@ -22,13 +34,29 @@
 | Phase | 状態 | 到達点 |
 | --- | --- | --- |
 | Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得してPages表示する。Phase 0で導入したlegacy管理者LINE経路はPhase 3.4.3で退役済み |
-| Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページを提供する |
+| Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページ、退会を提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
 | Phase 3 | 完了 | 利用者別メール通知、配信feedback、unsubscribe / re-enable、90日retention cleanupまでproduction acceptance完了 |
 | Phase 4 | 計画 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
 | Phase 7 | 計画 | 体育館、野球場、会議室などへ施設種別を広げる |
+
+## Launch Readiness Gate
+
+Phase 0〜3で技術MVPは成立した。
+Phase 4の本格実装と鹿児島β公開へ進む前に、次のLaunch Readinessを完了する。
+
+1. **ドキュメント整合性整理** — 完了（2026-08-20）
+2. **退会failure-path hardening** — `withdrawal_pending` のままAuth削除に失敗した場合の本人参照権限を整理する
+3. **利用規約・Privacy・運営者/問い合わせ先の確定** — 一般公開可能な正式版へ更新する
+4. **各予約サイトの利用規約・アクセス頻度最終確認** — 取得可否と適切なアクセス頻度を記録する
+5. **GitHub Actions外部ActionのSHA pinning** — supply-chain riskを低減する
+6. **Monitoring Policy UX** — 現行監視範囲をUIで明示し、範囲外条件は保存可能なまま需要把握へ利用する
+7. **β運用指標の決定** — 取得品質、通知速度、通知品質、利用状況を評価できる最小指標を決める
+
+Launch Readiness Gateは新しいPhase番号を持たない。
+Phase 4以降のロードマップ番号は変更しない。
 
 ---
 
@@ -320,7 +348,7 @@ Phase 1全体を運用可能な品質にし、Phase 0へ影響を与えずに公
 - active会員の有効かつ完全な条件だけを返す `list_notification_rules_for_matching()` を、`security invoker` のservice-role専用RPCとして追加した。
 - GitHub Actionsは `ENABLE_NOTIFICATION_MATCHING=true` の場合だけスクレイピング後に照合し、service-role keyをそのstepのSecret環境変数だけへ渡す。照合失敗をwarningに留め、availability取得・JSON commit・Pages更新をブロックしない。
 - match詳細は `data/`、GitHub Pages、公開Artifactへ保存せず、CLIログも集計値だけとする。
-- 現在の取得範囲は直近15日間の土日・日本の祝日、8:00〜13:00、60分以上である。範囲外の条件も保存できるが、対象データを取得しないため現時点では一致しない。祝日は実際の日付の曜日で判定する。
+- 現在のスクレイパーは直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を生成する。通知条件自体は30分以上を指定でき、取得済み候補との実際の重複時間が最低連続時間以上なら一致する。通常の平日や8:00〜13:00外は現在のMonitoring Policyでは取得しない。祝日は実際の日付の曜日で判定する。
 - [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)とUI・RPC・照合エンジン・workflowの静的テストを追加した。
 - Phase 2は完了である。通知条件の保存・管理、1利用者5件の上限、空き候補との照合までを実装済みである。
 - Phase 3.1のqueue foundation、Phase 3.2のemail delivery worker、Phase 3.3のproduction deploymentとcanary検証、Phase 3.4のautomatic enqueue/dispatchとlegacy経路整理は完了した。
@@ -340,7 +368,7 @@ Phase 1全体を運用可能な品質にし、Phase 0へ影響を与えずに公
 - 自然言語による条件入力
 - AIによる空き予測
 
-Phase 2は通知条件の保存・編集・停止と照合結果の生成までを担当する。条件に基づいて実際に利用者別メールを送信する処理はPhase 3で実装する。
+Phase 2は通知条件の保存・編集・停止と照合結果の生成までを担当する。条件に基づく利用者別メール送信はPhase 3で実装し、production acceptanceまで完了した。
 
 Actionsで照合を実行するには、Repository Variable
 `ENABLE_NOTIFICATION_MATCHING=true` と `SUPABASE_URL`、Repository Secret
@@ -389,7 +417,7 @@ Actionsで照合を実行するには、Repository Variable
 
 - 通知対象を決定するジョブ
 - メール配信キュー、送信処理、再試行、失敗管理
-- 利用者・空き枠・条件・チャネル単位の重複防止
+- 利用者・空き枠・チャネル単位の重複防止
 - 通知メールと配信停止導線
 - 配信履歴と運用メトリクス
 
