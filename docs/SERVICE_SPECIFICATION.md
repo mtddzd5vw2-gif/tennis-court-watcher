@@ -5,12 +5,14 @@
 本書は、Tennis Court Watcherの**現在利用者へ提供しているサービス仕様の正**として、
 利用者向け機能、主要データ、認証・認可、システム責務、拡張方針を定義する。
 
-2026-08-20時点でPhase 0〜3は完了している。
+2026-08-21時点でPhase 0〜3は完了している。
 Phase 1の退会もproduction acceptanceまで完了した。
 Phase 4の利用者別LINE通知以降は未実装である。
 
 長期的な目的は[Project Vision](./PROJECT_VISION.md)、
 現在地・実装順序・完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
+取得元確認とβ運用指標は[Launch Readiness Review](./LAUNCH_READINESS_REVIEW.md)、
+Phase 4の採用方式は[Phase 4 LINE通知設計](./PHASE4_LINE_NOTIFICATION_DESIGN.md)を参照する。
 Phase別設計書に残る導入当時の記述と本書が矛盾する場合は、
 明示的な履歴記述を除き本書の現在仕様を優先する。
 
@@ -42,6 +44,7 @@ Tennis Court Watcherは、公共施設予約サイトの空き状況を定期的
 - 本サービスは施設の予約、予約代行、キャンセル、決済を行わない。
 - 最新状態と予約可否は公式予約サイトを正とする。
 - 取得元の規約、公開範囲、適切なアクセス頻度を継続して確認する。
+- 取得元から公開空き情報の自動確認・表示・通知について利用許可を取得済みである。認証情報を使用せず、自動予約を行わない現在の範囲を維持し、規約・仕様・アクセス負荷を継続確認する。
 
 ## 3. 対象利用者
 
@@ -318,14 +321,14 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - 短時間で失効する一回限りの連携状態を用いて、別会員への誤連携を防ぐ。
 - LINEユーザーIDは個人情報に準じてデータベースへ保存し、GitHubへ保存しない。
 - 連携解除、LINE側ブロック、配信不能、退会を通知対象へ反映する。
-- 1会員に紐づけ可能なLINEアカウント数と、1LINEアカウントを複数会員へ紐づける可否は**要決定**。
+- 1会員1LINE account、1LINE account 1会員とし、DB unique制約で強制する。
 
 ### 13.2 移行
 
 - Phase 0の既存管理者LINE通知はlegacy notification pathとしてPhase 3.4.3で退役した。
 - Phase 4は管理者専用LINE経路を再構築せず、管理者を含む会員共通LINE notification基盤として導入する。
 - 導入日、重複配信防止、監視、ロールバックを定める。
-- LINE Loginを認証に使用するか、Messaging API連携だけに使用するかは**要決定**。
+- Supabase Authのメール認証を会員認証の正として維持し、LINE Login v2.1はログイン済み会員との連携にだけ使用する。LINE Login channelとMessaging API channelは同一providerへ作成する。
 
 ## 14. 無料・有料プラン案
 

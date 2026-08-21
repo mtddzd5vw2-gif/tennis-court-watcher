@@ -5,6 +5,9 @@
 > [!IMPORTANT]
 > 鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場の空き取得は、いずれも認証不要の実画面に対応済みです。スクレイパーは予約サイトの利用者ID・パスワードを使用・保存せず、自動予約も行いません。会員ログインはこれとは分離したSupabase Authのメールマジックリンクを使用します。
 
+> [!NOTE]
+> 取得元から公開空き情報の自動確認・表示・通知について利用許可を取得済みです。認証情報を使わない現在の範囲を維持し、アクセス頻度、失敗率、HTTP 403/429、予約サイトの規約・仕様変更を継続監視します。判断根拠と運用指標は[Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)を参照してください。
+
 ## Documentation
 
 現在利用者へ提供している仕様はService Specification、
@@ -13,6 +16,8 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 - [Project Vision](docs/PROJECT_VISION.md)
 - [Development Roadmap](docs/DEVELOPMENT_ROADMAP.md)
 - [Service Specification](docs/SERVICE_SPECIFICATION.md)
+- [Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)
+- [Phase 4 LINE Notification Design](docs/PHASE4_LINE_NOTIFICATION_DESIGN.md)
 - [Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)
 - [Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)
 - [Auth Email Operations](docs/AUTH_EMAIL_OPERATIONS.md)
@@ -106,8 +111,10 @@ Phase 2は完了です。`supabase/migrations/20260807000000_create_notification
 ├── data/availability.json
 ├── docs/
 │   ├── DEVELOPMENT_ROADMAP.md
+│   ├── LAUNCH_READINESS_REVIEW.md
 │   ├── PHASE1_AUTH_DESIGN.md
 │   ├── PHASE2_NOTIFICATION_RULES_DESIGN.md
+│   ├── PHASE4_LINE_NOTIFICATION_DESIGN.md
 │   ├── PROJECT_VISION.md
 │   └── SERVICE_SPECIFICATION.md
 ├── legal/
@@ -379,15 +386,18 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 
 ## 今後の作業
 
-Phase 4へ進む前にLaunch Readiness Gateを完了します。
+Launch Readiness Gateは完了し、Phase 4へ進みます。
 
 1. 退会failure-pathのhardening — 完了（2026-08-20）
 2. 利用規約・プライバシーポリシー・運営者/問い合わせ先の正式化 — 完了（2026-08-21）
-3. 各予約サイトの利用規約・アクセス頻度の最終確認
-4. GitHub Actions外部ActionのコミットSHA固定
-5. Monitoring Policyと監視範囲外条件のUI表示
-6. 鹿児島βで使用する運用指標の決定
-7. Gate完了後、Phase 4の利用者別LINE通知へ進む
+3. 各予約サイトの利用規約・アクセス頻度の最終確認 — 完了（取得元の利用許可取得済み）
+4. GitHub Actions外部ActionのコミットSHA固定 — 完了（PR #56）
+5. Monitoring Policyと監視範囲外条件のUI表示 — 完了（PR #57）
+6. 鹿児島βで使用する運用指標の決定 — 完了（Launch Readiness Review）
+7. Phase 4の利用者別LINE通知 — 設計完了、実装着手
+
+取得元の利用許可は取得済みである。アクセス負荷とβ運用指標は
+[Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)を参照する。
 
 ## 注意事項
 
