@@ -84,19 +84,13 @@
     }
   }
 
-  function formatTimestamp(value) {
-    if (!value) {
-      return "未登録";
-    }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return "確認できません";
-    }
-    return new Intl.DateTimeFormat("ja-JP", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "Asia/Tokyo",
-    }).format(date);
+  function isMissingLoginAccount(error, requestMode) {
+    return (
+      requestMode === "login" &&
+      error &&
+      error.status === 422 &&
+      error.code === "otp_disabled"
+    );
   }
 
   function enableLoginForm(client, config, form) {
@@ -104,19 +98,68 @@
     const consentInput = form.elements["terms-consent"];
     const submitButton = form.querySelector('button[type="submit"]');
     const status = form.querySelector("[data-form-status]");
+    const formTitle = document.querySelector("[data-auth-form-title]");
+    const modeGuidance = form.querySelector("[data-auth-mode-guidance]");
+    const formNote = form.querySelector("[data-auth-form-note]");
+    const signupConsent = form.querySelector("[data-signup-consent]");
+    const modeButtons = Array.from(
+      form.querySelectorAll("[data-auth-mode]"),
+    );
     let submitting = false;
+    let authMode = "login";
+
+    const isSignup = () => authMode === "signup";
 
     const isValid = () =>
       emailInput.value.trim() !== "" &&
       emailInput.validity.valid &&
-      consentInput.checked;
+      (!isSignup() || consentInput.checked);
 
     const updateSubmitState = () => {
       submitButton.disabled = submitting || !isValid();
     };
 
+    const setMode = (nextMode) => {
+      if (submitting || !["login", "signup"].includes(nextMode)) {
+        return;
+      }
+      authMode = nextMode;
+      const signup = isSignup();
+      for (const button of modeButtons) {
+        button.setAttribute(
+          "aria-pressed",
+          String(button.dataset.authMode === authMode),
+        );
+      }
+      signupConsent.hidden = !signup;
+      consentInput.disabled = !signup;
+      consentInput.required = signup;
+      if (!signup) {
+        consentInput.checked = false;
+      }
+      formTitle.textContent = signup
+        ? "会員登録用リンクを受け取る"
+        : "ログイン用リンクを受け取る";
+      modeGuidance.textContent = signup
+        ? "初めて利用するメールアドレスを入力し、利用規約を確認してください。"
+        : "登録済みのメールアドレスを入力してください。";
+      formNote.textContent = signup
+        ? "メールアドレスと利用規約への同意を確認すると送信できます。"
+        : "有効なメールアドレスを入力すると送信できます。";
+      submitButton.textContent = signup
+        ? "会員登録用リンクを送る"
+        : "ログイン用リンクを送る";
+      setStatus(status, "");
+      updateSubmitState();
+    };
+
     emailInput.addEventListener("input", updateSubmitState);
     consentInput.addEventListener("change", updateSubmitState);
+    for (const button of modeButtons) {
+      button.addEventListener("click", () => {
+        setMode(button.dataset.authMode);
+      });
+    }
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (submitting || !isValid()) {
@@ -125,6 +168,7 @@
       }
 
       submitting = true;
+      const requestMode = authMode;
       updateSubmitState();
       setStatus(status, "送信しています…");
 
@@ -133,17 +177,23 @@
           email: emailInput.value.trim(),
           options: {
             emailRedirectTo: config.authCallbackUrl,
+            shouldCreateUser: requestMode === "signup",
           },
         })
         .then(({ error }) => {
-          if (error) {
+          if (error && !isMissingLoginAccount(error, requestMode)) {
             throw new Error("magic_link_request_failed");
           }
-          rememberPendingTermsAcceptance();
+          if (requestMode === "signup") {
+            rememberPendingTermsAcceptance();
+          } else {
+            clearPendingTermsAcceptance();
+          }
           form.reset();
+          setMode(requestMode);
           setStatus(
             status,
-            "メールを確認してください。ログイン用リンクを送信できる場合は、まもなく届きます。",
+            "メールを確認してください。リンクを送信できる場合は、まもなく届きます。",
             "success",
           );
         })
@@ -160,7 +210,7 @@
         });
     });
 
-    updateSubmitState();
+    setMode("login");
     form.hidden = false;
   }
 
@@ -270,14 +320,6 @@
     const loading = document.querySelector("[data-account-loading]");
     const content = document.querySelector("[data-account-content]");
     const email = document.querySelector("[data-account-email]");
-    const emailVerified = document.querySelector("[data-account-email-verified]");
-    const membershipStatus = document.querySelector("[data-membership-status]");
-    const createdAt = document.querySelector("[data-account-created-at]");
-    const latestTermsVersion = document.querySelector("[data-latest-terms-version]");
-    const latestTermsAcceptedAt = document.querySelector(
-      "[data-latest-terms-accepted-at]",
-    );
-    const termsHistory = document.querySelector("[data-terms-history]");
     const consentPanel = document.querySelector("[data-terms-consent-panel]");
     const consentInput = document.querySelector("[data-account-terms-consent]");
     const consentButton = document.querySelector("[data-accept-current-terms]");
@@ -311,29 +353,9 @@
     email.textContent = session.user && session.user.email
       ? session.user.email
       : "確認済み";
-    emailVerified.textContent =
-      session.user && session.user.email_confirmed_at
-        ? "認証済み"
-        : "確認状態を取得できません";
     content.hidden = false;
     logout.disabled = false;
     deleteStart.disabled = false;
-
-    const renderTermsHistory = (acceptances) => {
-      termsHistory.replaceChildren();
-      if (!acceptances.length) {
-        const empty = document.createElement("li");
-        empty.textContent = "同意履歴はありません";
-        termsHistory.append(empty);
-        return;
-      }
-      for (const acceptance of acceptances) {
-        const item = document.createElement("li");
-        item.textContent =
-          `${acceptance.version}（${formatTimestamp(acceptance.accepted_at)}）`;
-        termsHistory.append(item);
-      }
-    };
 
     const loadAccountData = async () => {
       setStatus(loading, "会員情報を確認しています…");
@@ -344,18 +366,15 @@
         await Promise.all([
           client
             .from("profiles")
-            .select(
-              "membership_status,latest_terms_version," +
-                "latest_terms_accepted_at,created_at",
-            )
+            .select("membership_status")
             .single(),
           client
             .from("terms_acceptances")
-            .select("document_type,version,accepted_at,source")
+            .select("document_type,version")
             .order("accepted_at", { ascending: false }),
           client
             .from("legal_document_versions")
-            .select("version,effective_at")
+            .select("version")
             .eq("document_type", "terms")
             .eq("is_current", true)
             .single(),
@@ -379,15 +398,6 @@
           acceptance.document_type === "terms" &&
           acceptance.version === currentVersion,
       );
-
-      membershipStatus.textContent = profile.membership_status;
-      createdAt.textContent = formatTimestamp(profile.created_at);
-      latestTermsVersion.textContent =
-        profile.latest_terms_version || "未同意";
-      latestTermsAcceptedAt.textContent = formatTimestamp(
-        profile.latest_terms_accepted_at,
-      );
-      renderTermsHistory(acceptances);
 
       const requiresConsent =
         profile.membership_status === "pending_terms" ||

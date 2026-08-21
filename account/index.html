@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex">
     <meta
       name="description"
-      content="Tennis Court Watcher Phase 1の最小限のマイページ画面です。"
+      content="Tennis Court Watcherの会員向けマイページです。"
     >
     <title>マイページ | Tennis Court Watcher</title>
     <link rel="stylesheet" href="../assets/css/auth.css">
@@ -35,50 +35,12 @@
       </p>
 
       <div class="account-grid" data-account-content hidden>
-        <section class="account-card" aria-labelledby="account-status-title">
-          <h2 id="account-status-title">アカウント状態</h2>
-          <dl class="definition-list">
-            <dt>ログイン状態</dt>
-            <dd>ログイン中</dd>
-            <dt>メールアドレス</dt>
-            <dd data-account-email></dd>
-            <dt>メール認証</dt>
-            <dd data-account-email-verified>確認中</dd>
-            <dt>会員状態</dt>
-            <dd data-membership-status>確認中</dd>
-            <dt>会員登録日時</dt>
-            <dd data-account-created-at>確認中</dd>
-            <dt>最新の同意規約</dt>
-            <dd data-latest-terms-version>確認中</dd>
-            <dt>最新の規約同意日時</dt>
-            <dd data-latest-terms-accepted-at>確認中</dd>
-          </dl>
-        </section>
-
         <section
           class="account-card account-card--full"
-          aria-labelledby="terms-history-title"
+          aria-labelledby="account-email-title"
         >
-          <h2 id="terms-history-title">利用規約の同意履歴</h2>
-          <ul class="terms-history" data-terms-history>
-            <li>確認中</li>
-          </ul>
-        </section>
-
-        <section
-          class="account-card account-card--full"
-          aria-labelledby="session-retention-title"
-        >
-          <h2 id="session-retention-title">このブラウザのログイン状態</h2>
-          <p>
-            このブラウザにはログイン状態が保持されています。
-            ブラウザを閉じても、通常は次回そのまま利用できます。
-          </p>
-          <p class="muted">
-            共有端末では、利用後にこのブラウザからログアウトしてください。
-            ログアウト、ブラウザデータの削除、セッションの無効化、別の端末や
-            ブラウザからの利用時には、再ログインが必要です。
-          </p>
+          <h2 id="account-email-title">ログイン中のアカウント</h2>
+          <p class="account-email" data-account-email></p>
         </section>
 
         <section
@@ -119,7 +81,7 @@
         <section class="account-card" aria-labelledby="notification-rules-title">
           <h2 id="notification-rules-title">通知条件</h2>
           <p class="muted">
-            希望する施設・曜日・時間帯を登録し、通知条件の有効化や一時停止を管理します。
+            希望する施設・曜日・時間帯を登録できます。
           </p>
           <a class="button" href="notifications.html">通知条件を管理する</a>
         </section>
@@ -127,7 +89,7 @@
         <section class="account-card" aria-labelledby="account-actions-title">
           <h2 id="account-actions-title">アカウント操作</h2>
           <p class="muted">
-            ログアウトは、このブラウザのセッションだけを終了します。
+            共有端末では、利用後にログアウトしてください。
             退会すると、アカウントと登録済みの通知条件などは削除され、元に戻せません。
           </p>
           <div class="button-row">

@@ -7,6 +7,15 @@
     "通知条件は最大5件まで登録できます。追加するには既存の条件を削除してください。";
   const NOTIFICATION_RULE_LIMIT_DB_MESSAGE =
     "Notification rule limit of 5 has been reached.";
+  // Monitoring data contains only weekends and Japanese holidays. Store every
+  // ISO weekday so a weekday holiday remains eligible for the fixed policy.
+  const FIXED_NOTIFICATION_WEEKDAYS = Object.freeze([
+    1, 2, 3, 4, 5, 6, 7,
+  ]);
+  const FIXED_NOTIFICATION_START_TIME = "08:00";
+  const FIXED_NOTIFICATION_END_TIME = "13:00";
+  const DEFAULT_MINIMUM_DURATION_MINUTES = 120;
+  const ALLOWED_MINIMUM_DURATIONS = new Set([60, 120, 180, 240, 300]);
   const WEEKDAY_LABELS = new Map([
     [1, "月曜日"],
     [2, "火曜日"],
@@ -53,14 +62,8 @@
   const nameInput = document.querySelector("[data-rule-name]");
   const facilityFieldset = document.querySelector("[data-facility-fieldset]");
   const facilityOptions = document.querySelector("[data-facility-options]");
-  const weekdayFieldset = document.querySelector("[data-weekday-fieldset]");
-  const weekdayInputs = Array.from(
-    document.querySelectorAll("[data-rule-weekday]"),
-  );
   const dateFromInput = document.querySelector("[data-rule-date-from]");
   const dateToInput = document.querySelector("[data-rule-date-to]");
-  const startTimeInput = document.querySelector("[data-rule-start-time]");
-  const endTimeInput = document.querySelector("[data-rule-end-time]");
   const minimumDurationInput = document.querySelector(
     "[data-rule-minimum-duration]",
   );
@@ -255,12 +258,30 @@
   }
 
   function selectedWeekdayNames(ruleId) {
+    return selectedWeekdays(ruleId)
+      .map((weekday) => WEEKDAY_LABELS.get(weekday) || "確認できない曜日")
+      .join("・");
+  }
+
+  function selectedWeekdays(ruleId) {
     return ruleWeekdays
       .filter((selection) => selection.rule_id === ruleId)
       .map((selection) => Number(selection.weekday))
-      .sort((left, right) => left - right)
-      .map((weekday) => WEEKDAY_LABELS.get(weekday) || "確認できない曜日")
-      .join("・");
+      .sort((left, right) => left - right);
+  }
+
+  function usesFixedNotificationPolicy(rule) {
+    const weekdays = selectedWeekdays(rule.id);
+    return (
+      normalizeTimeInput(rule.start_time, "") ===
+        FIXED_NOTIFICATION_START_TIME &&
+      normalizeTimeInput(rule.end_time, "") === FIXED_NOTIFICATION_END_TIME &&
+      ALLOWED_MINIMUM_DURATIONS.has(Number(rule.minimum_duration_minutes)) &&
+      weekdays.length === FIXED_NOTIFICATION_WEEKDAYS.length &&
+      FIXED_NOTIFICATION_WEEKDAYS.every(
+        (weekday, index) => weekdays[index] === weekday,
+      )
+    );
   }
 
   function createRuleAction(label, variant, action) {
@@ -299,11 +320,25 @@
         "施設",
         selectedFacilityNames(rule.id) || "施設が登録されていません",
       );
-      appendDefinitionRow(
-        details,
-        "曜日",
-        selectedWeekdayNames(rule.id) || "曜日が登録されていません",
-      );
+      const usesFixedPolicy = usesFixedNotificationPolicy(rule);
+      if (usesFixedPolicy) {
+        appendDefinitionRow(
+          details,
+          "通知対象",
+          "土日・祝日、8:00〜13:00",
+        );
+      } else {
+        appendDefinitionRow(
+          details,
+          "以前の曜日設定",
+          selectedWeekdayNames(rule.id) || "曜日が登録されていません",
+        );
+        appendDefinitionRow(
+          details,
+          "以前の時間設定",
+          `${formatTime(rule.start_time)} 〜 ${formatTime(rule.end_time)}`,
+        );
+      }
       appendDefinitionRow(
         details,
         "対象期間",
@@ -311,12 +346,7 @@
       );
       appendDefinitionRow(
         details,
-        "対象時間帯",
-        `${formatTime(rule.start_time)} 〜 ${formatTime(rule.end_time)}`,
-      );
-      appendDefinitionRow(
-        details,
-        "最低連続時間",
+        "利用時間",
         `${rule.minimum_duration_minutes}分`,
       );
       appendDefinitionRow(details, "更新日時", formatTimestamp(rule.updated_at));
@@ -346,7 +376,17 @@
         void deleteRule(rule);
       });
       actions.append(editButton, toggleButton, deleteButton);
-      card.append(header, details, actions);
+      card.append(header, details);
+      if (!usesFixedPolicy) {
+        card.append(
+          createElement(
+            "p",
+            "form-note",
+            "この条件は以前の設定です。編集して保存すると、現在の通知対象に更新されます。",
+          ),
+        );
+      }
+      card.append(actions);
       ruleList.append(card);
     }
 
@@ -412,68 +452,6 @@
     formErrors.focus();
   }
 
-  function timeToMinutes(value) {
-    const match = /^(\d{2}):(\d{2})$/.exec(value);
-    if (!match) {
-      return null;
-    }
-    return Number(match[1]) * 60 + Number(match[2]);
-  }
-
-  function parseIsoDateUtc(value) {
-    const match = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(value);
-    if (!match) {
-      return null;
-    }
-
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const date = new Date(0);
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCFullYear(year, month - 1, day);
-
-    if (
-      date.getUTCFullYear() !== year ||
-      date.getUTCMonth() !== month - 1 ||
-      date.getUTCDate() !== day
-    ) {
-      return null;
-    }
-
-    return date;
-  }
-
-  function dateRangeContainsSelectedWeekday(dateFrom, dateTo, selectedWeekdays) {
-    if (selectedWeekdays.length === 0) {
-      return true;
-    }
-
-    const startDate = parseIsoDateUtc(dateFrom);
-    const endDate = parseIsoDateUtc(dateTo);
-    if (!startDate || !endDate || startDate > endDate) {
-      return true;
-    }
-
-    const selected = new Set(selectedWeekdays);
-    const dayMilliseconds = 24 * 60 * 60 * 1000;
-    const spanDays = Math.floor(
-      (endDate.getTime() - startDate.getTime()) / dayMilliseconds,
-    );
-
-    for (let offset = 0; offset <= Math.min(spanDays, 6); offset += 1) {
-      const weekday = new Date(
-        startDate.getTime() + offset * dayMilliseconds,
-      ).getUTCDay();
-      const isoWeekday = weekday === 0 ? 7 : weekday;
-      if (selected.has(isoWeekday)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
   function validateRuleForm() {
     const errors = [];
     const trimmedName = nameInput.value.trim();
@@ -481,11 +459,6 @@
       facilityOptions.querySelectorAll('input[name="facility_ids"]:checked'),
       (input) => input.value,
     );
-    const selectedWeekdays = weekdayInputs
-      .filter((input) => input.checked)
-      .map((input) => Number(input.value));
-    const startMinutes = timeToMinutes(startTimeInput.value);
-    const endMinutes = timeToMinutes(endTimeInput.value);
     const minimumDuration = Number(minimumDurationInput.value);
 
     if (!trimmedName) {
@@ -507,25 +480,6 @@
       });
     }
 
-    if (selectedWeekdays.length < 1) {
-      errors.push({
-        message: "曜日を1件以上選択してください。",
-        elements: [weekdayFieldset],
-      });
-    }
-
-    if (startMinutes === null || endMinutes === null) {
-      errors.push({
-        message: "開始時刻と終了時刻を入力してください。",
-        elements: [startTimeInput, endTimeInput],
-      });
-    } else if (startMinutes >= endMinutes) {
-      errors.push({
-        message: "開始時刻は終了時刻より前にしてください。",
-        elements: [startTimeInput, endTimeInput],
-      });
-    }
-
     if (
       dateFromInput.value &&
       dateToInput.value &&
@@ -535,30 +489,14 @@
         message: "開始日は終了日以前の日付にしてください。",
         elements: [dateFromInput, dateToInput],
       });
-    } else if (
-      dateFromInput.value &&
-      dateToInput.value &&
-      !dateRangeContainsSelectedWeekday(
-        dateFromInput.value,
-        dateToInput.value,
-        selectedWeekdays,
-      )
-    ) {
-      errors.push({
-        message:
-          "対象期間内に選択した曜日がありません。日付または曜日を変更してください。",
-        elements: [dateFromInput, dateToInput, weekdayFieldset],
-      });
     }
 
     if (
       !Number.isInteger(minimumDuration) ||
-      minimumDuration < 30 ||
-      minimumDuration > 720 ||
-      minimumDuration % 30 !== 0
+      !ALLOWED_MINIMUM_DURATIONS.has(minimumDuration)
     ) {
       errors.push({
-        message: "最低連続時間は30〜720分の範囲で、30分単位で入力してください。",
+        message: "利用時間は1〜5時間の範囲で、1時間単位で選択してください。",
         elements: [minimumDurationInput],
       });
     }
@@ -571,11 +509,11 @@
         p_is_enabled: enabledInput.checked,
         p_date_from: dateFromInput.value || null,
         p_date_to: dateToInput.value || null,
-        p_start_time: startTimeInput.value,
-        p_end_time: endTimeInput.value,
+        p_start_time: FIXED_NOTIFICATION_START_TIME,
+        p_end_time: FIXED_NOTIFICATION_END_TIME,
         p_minimum_duration_minutes: minimumDuration,
         p_facility_ids: selectedFacilities,
-        p_weekdays: selectedWeekdays,
+        p_weekdays: [...FIXED_NOTIFICATION_WEEKDAYS],
       },
     };
   }
@@ -584,6 +522,13 @@
     return typeof value === "string" && value.length >= 5
       ? value.slice(0, 5)
       : fallback;
+  }
+
+  function normalizeMinimumDuration(value) {
+    const duration = Number(value);
+    return ALLOWED_MINIMUM_DURATIONS.has(duration)
+      ? duration
+      : DEFAULT_MINIMUM_DURATION_MINUTES;
   }
 
   function openRuleForm(rule = null) {
@@ -603,9 +548,9 @@
       nameInput.value = rule.name;
       dateFromInput.value = rule.date_from || "";
       dateToInput.value = rule.date_to || "";
-      startTimeInput.value = normalizeTimeInput(rule.start_time, "08:00");
-      endTimeInput.value = normalizeTimeInput(rule.end_time, "13:00");
-      minimumDurationInput.value = String(rule.minimum_duration_minutes);
+      minimumDurationInput.value = String(
+        normalizeMinimumDuration(rule.minimum_duration_minutes),
+      );
       enabledInput.checked = rule.is_enabled;
 
       const selectedFacilities = new Set(
@@ -619,14 +564,6 @@
         input.checked = selectedFacilities.has(input.value);
       }
 
-      const selectedWeekdays = new Set(
-        ruleWeekdays
-          .filter((selection) => selection.rule_id === rule.id)
-          .map((selection) => Number(selection.weekday)),
-      );
-      for (const input of weekdayInputs) {
-        input.checked = selectedWeekdays.has(Number(input.value));
-      }
     }
 
     formOpen = true;
@@ -826,10 +763,8 @@
     const hasFacility = ruleFacilities.some(
       (selection) => selection.rule_id === ruleId,
     );
-    const hasWeekday = ruleWeekdays.some(
-      (selection) => selection.rule_id === ruleId,
-    );
-    return hasFacility && hasWeekday;
+    const rule = rules.find((candidate) => candidate.id === ruleId);
+    return hasFacility && rule && usesFixedNotificationPolicy(rule);
   }
 
   async function toggleRule(rule) {
@@ -839,8 +774,8 @@
     if (!rule.is_enabled && !canEnableRule(rule.id)) {
       setStatus(
         status,
-        "施設と曜日が1件以上登録された条件だけを有効化できます。" +
-          "条件を編集して不足している項目を登録してください。",
+        "施設が登録され、現在の通知対象に合った条件だけを有効化できます。" +
+          "条件を編集して保存してください。",
         "error",
       );
       return;
