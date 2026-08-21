@@ -457,6 +457,7 @@ LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人�
 - 会員とLINEユーザーIDの安全な紐づけ、解除、再連携
 - 利用者別LINE配信キューと重複防止
 - ブロック、配信不能、連携解除の反映
+- 月200通の無料枠、180通の送信guard、email fallback、週次使用量報告
 - 会員共通LINE通知基盤と、legacy管理者LINE停止後も重複配信を起こさない導入手順
 
 ### 完了条件
@@ -466,6 +467,9 @@ LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人�
 - 連携解除・退会・通知停止を以後の配信へ反映できる。
 - 管理者を含む全会員が同じLINE notification基盤を利用し、管理者専用LINE経路を再構築しない。
 - Supabase Authのメール認証を正として維持し、同一LINE providerのLINE Login v2.1で会員とLINE accountを連携し、Messaging APIで配信する。
+- LINE Official Account Managerからの並行配信を含む月間使用量を公式APIで確認し、
+  毎週土曜に報告できる。180通到達後はLINE Pushを増やさずemailへ
+  フォールバックする。
 
 ### 対象外
 

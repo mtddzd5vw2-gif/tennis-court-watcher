@@ -82,6 +82,32 @@ LINE user IDは個人情報に準じ、GitHub、Actions log、Artifact、公開P
 - LINE送信workerはmessage ID、attempt、provider status、error codeを正規化する。
 - channel access tokenやchannel secretはEdge Function secretとして管理し、DBやGitHubへ保存しない。
 
+### 4.4 無料枠と運用監視
+
+- LINE公式アカウントはコミュニケーションプランの月200通を維持し、
+  自動で有料プランへ変更しない。
+- 利用者別LINE Pushは1会員・1回のworker実行につき1通へ集約する。
+- 運用上限は月180通とし、LINE送信workerは送信直前に月間使用量を確認する。
+- 180通到達後は新しいLINE Pushを送らず、既存のemail channelへ
+  フォールバックする。メール停止中の会員へ同意なく再送しない。
+- `GET /v2/bot/message/quota` と
+  `GET /v2/bot/message/quota/consumption` の集計値だけを使用し、
+  LINE user IDやmessage本文を監視処理へ渡さない。
+- 月間使用量にはMessaging APIだけでなくLINE Official Account Managerからの
+  配信も含まれるため、既存用途との並行運用分も同じ予算で管理する。
+- GitHub Actionsは毎日12:07 JSTに使用量を確認する。毎週土曜は必ず週次報告を
+  メール送信し、180通到達時は土曜を待たず当月1回だけ警告する。
+- 報告先、LINE channel access token、報告専用Resend API keyは
+  GitHub Secretsに保存する。宛先メールアドレスをrepository、Actions log、
+  Artifactへ出さない。
+- 当月の警告送信済み状態は宛先やtokenを含まない月単位のActions cacheで保持する。
+  cache消失時にもResendのidempotency keyで同一日の重複送信を抑止する。
+
+公式資料:
+
+- [LINE月間上限・使用量API](https://developers.line.biz/en/reference/messaging-api/#get-quota)
+- [Messaging API料金と通数](https://developers.line.biz/en/docs/messaging-api/pricing/)
+
 ## 5. 認可とRLS
 
 - `public` schemaへ追加する全tableでRLSを有効にする。
@@ -121,11 +147,12 @@ LINE display name、profile image、status message、email addressは取得し�
 3. LINE Login開始・callback・解除Edge Functionを実装する。
 4. My Pageへ連携状態と操作UIを追加する。
 5. webhook署名検証、冪等化、block/unfollow反映を実装する。
-6. `line` channelのqueue、worker、retry、重複防止を実装する。
-7. dry-runと架空利用者によるcross-user isolationを検証する。
-8. 管理者を含むβ会員を同じ基盤で連携する。
-9. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。
-10. delivery、block、解除、退会、rollbackをproduction acceptanceする。
+6. 月間使用量の週次報告と180通警告を有効化する。
+7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。
+8. dry-runと架空利用者によるcross-user isolationを検証する。
+9. 管理者を含むβ会員を同じ基盤で連携する。
+10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。
+11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。
 
 ## 9. 完了条件
 
@@ -135,3 +162,5 @@ LINE display name、profile image、status message、email addressは取得し�
 - 同じLINE通知を同じ利用者へ重複送信しない。
 - LINE user ID、token、secretが公開データまたはlogへ出ない。
 - メール通知はPhase 4導入中も継続し、LINE障害の影響を受けない。
+- LINE月間使用量が180通へ到達した後はLINE Pushを増やさず、週次報告と
+  当月1回の到達警告が運用宛先へ届く。

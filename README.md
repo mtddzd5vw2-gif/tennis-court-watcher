@@ -126,6 +126,7 @@ Phase 2は完了です。`supabase/migrations/20260807000000_create_notification
 │   ├── enqueue_email_notifications.py
 │   ├── dispatch_email_notifications.py
 │   ├── match_notification_rules.py
+│   ├── report_line_usage.py
 │   └── scrape.py
 ├── supabase/migrations/
 │   ├── 20260807000000_create_notification_rules.sql
@@ -356,15 +357,28 @@ Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 
 | `ENABLE_NOTIFICATION_MATCHING` | `true` のときだけ通知条件照合を実行 |
 | `ENABLE_USER_EMAIL_ENQUEUE` | `true` のときだけ利用者別メール候補をqueueへ登録 |
 | `ENABLE_USER_EMAIL_DISPATCH` | `true` のときだけemail delivery workerを実行 |
+| `ENABLE_LINE_USAGE_REPORTS` | `true` のときだけLINE月間使用量の定期確認と報告を実行 |
+| `LINE_USAGE_WARNING_THRESHOLD` | LINE Pushを止める月間運用上限。初期値は`180` |
 | `SUPABASE_URL` | Supabase Project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | ブラウザ公開用のpublishable key |
 | `AUTH_CALLBACK_URL` | Supabaseに許可登録した本番callback URL |
 
 `SUPABASE_SERVICE_ROLE_KEY` はmatching/enqueue stepだけ、`EMAIL_DELIVERY_WORKER_SECRET` はdispatch stepだけへ渡します。3つの通知stepは `continue-on-error: true` で、失敗してもavailability Artifact・commit・Pages公開を妨げません。
 
+LINE使用量報告は `.github/workflows/report-line-usage.yml` が毎日12:07 JSTに
+公式APIの月間上限と使用済み通数を確認します。土曜は週次メールを送り、
+180通到達時は当月1回だけ警告します。`LINE_CHANNEL_ACCESS_TOKEN`、
+`LINE_USAGE_REPORT_RESEND_API_KEY`、`LINE_USAGE_REPORT_TO` はGitHub Secretsへ保存し、
+repositoryやlogへ値を出しません。月間使用量にはLINE Official Account Managerからの
+配信も含まれます。利用者別LINE workerは実装時に同じ使用量を送信直前にも確認し、
+180通以降を既存email channelへフォールバックします。
+
 ## GitHub ActionsとPages
 
 cronは `7,37 0-14,22-23 * * *` です。UTCから換算すると、JST 07:07〜23:37の30分間隔です。ただし `ENABLE_SCHEDULED_RUNS=true` になるまで定期ジョブは実行されません。
+
+LINE使用量確認のcronは `7 3 * * *`（毎日12:07 JST）です。
+`ENABLE_LINE_USAGE_REPORTS=true`になるまで定期ジョブは実行されません。
 
 Phase 3.4.4ではnative scheduleをprimaryのまま維持し、qualifying live runが45分間生成されない場合だけSupabase Edge Functionがfallback dispatchするwatchdogを追加しています。watchdog用Cronはmigrationでは作成せず、`off -> observe 24〜48h -> dispatch` の確認後に手動作成します。設計、secret、Cron SQLは[Phase 3 Scheduler Watchdog](docs/PHASE3_SCHEDULER_WATCHDOG.md)を参照してください。
 
