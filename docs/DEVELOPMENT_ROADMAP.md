@@ -37,7 +37,7 @@ Phase設計書に残る「今回」「後続PR」「未実装」等の記述は�
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページ、退会を提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
 | Phase 3 | 完了 | 利用者別メール通知、配信feedback、unsubscribe / re-enable、90日retention cleanupまでproduction acceptance完了 |
-| Phase 4 | 計画 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
+| Phase 4 | 実装着手 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
 | Phase 7 | 計画 | 体育館、野球場、会議室などへ施設種別を広げる |
@@ -50,13 +50,14 @@ Phase 4の本格実装と鹿児島β公開へ進む前に、次のLaunch Readine
 1. **ドキュメント整合性整理** — 完了（2026-08-20）
 2. **退会failure-path hardening** — 完了（2026-08-20）。Auth削除失敗時も `withdrawal_pending` 利用者の本人profile・同意履歴をRLSで非表示にし、`accept_current_terms()` を拒否する。profile行ロックで規約同意と退会ロックを直列化し、本番適用・検証済み
 3. **利用規約・Privacy・運営者/問い合わせ先の確定** — 完了（2026-08-21）。正式版 `2026-08-21`、グランドスラム（鹿児島市内テニスサークル）、簡易難読化した問い合わせ先、規約改定時の再同意を確定
-4. **各予約サイトの利用規約・アクセス頻度最終確認** — 取得可否と適切なアクセス頻度を記録する
-5. **GitHub Actions外部ActionのSHA pinning** — supply-chain riskを低減する
-6. **Monitoring Policy UX** — 現行監視範囲をUIで明示し、会員向け空き通知はその範囲内で土曜・日曜・祝日と時間帯を選べるようにする。利用時間は60分刻み、初期値120分とする
-7. **β運用指標の決定** — 取得品質、通知速度、通知品質、利用状況を評価できる最小指標を決める
+4. **各予約サイトの利用規約・アクセス頻度最終確認** — 完了。取得元から公開空き情報の自動確認・表示・通知について利用許可を取得済み。現在の認証不要・自動予約なし・逐次取得の範囲を維持し、規約・仕様・負荷を継続監視する
+5. **GitHub Actions外部ActionのSHA pinning** — 完了（2026-08-20、PR #56）
+6. **Monitoring Policy UX** — 完了（2026-08-21、PR #57）。土曜・日曜・祝日、時間帯、60分刻みの利用時間を選択可能
+7. **β運用指標の決定** — 完了（2026-08-21）。取得品質、freshness、通知速度、重複・誤配信、delivery、利用状況を[Launch Readiness Review](./LAUNCH_READINESS_REVIEW.md)で定義
 
 Launch Readiness Gateは新しいPhase番号を持たない。
 Phase 4以降のロードマップ番号は変更しない。
+Gateの確認根拠と再開条件は[Launch Readiness Review](./LAUNCH_READINESS_REVIEW.md)を正とする。
 
 ---
 
@@ -440,6 +441,12 @@ Actionsで照合を実行するには、Repository Variable
 
 ## Phase 4: LINE公式アカウント連携と利用者別LINE通知
 
+**状態: 実装着手。Launch Readiness Gate完了。**
+
+[Phase 4 LINE通知設計](./PHASE4_LINE_NOTIFICATION_DESIGN.md)で採用方式と実装順序を定義する。
+LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人向け安全な状態RPCは
+`20260821051500_add_line_account_link_foundation.sql`で前方追加する。
+
 ### 目的
 
 会員とLINEユーザーを安全に紐づけ、利用者ごとの通知条件に合う空き候補をLINEで届ける。
@@ -458,7 +465,7 @@ Actionsで照合を実行するには、Repository Variable
 - 条件一致した利用者へ個別に通知し、別利用者の条件や識別子を露出しない。
 - 連携解除・退会・通知停止を以後の配信へ反映できる。
 - 管理者を含む全会員が同じLINE notification基盤を利用し、管理者専用LINE経路を再構築しない。
-- LINE Loginを併用するか、Messaging APIのみで連携するかは**要決定**。
+- Supabase Authのメール認証を正として維持し、同一LINE providerのLINE Login v2.1で会員とLINE accountを連携し、Messaging APIで配信する。
 
 ### 対象外
 
