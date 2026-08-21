@@ -25,6 +25,7 @@ RULE_FIELDS = {
     "start_time",
     "end_time",
     "minimum_duration_minutes",
+    "include_holidays",
     "facility_ids",
     "weekdays",
 }
@@ -82,6 +83,7 @@ class NotificationRule:
     start_time: time
     end_time: time
     minimum_duration_minutes: int
+    include_holidays: bool
     facility_ids: tuple[str, ...]
     weekdays: tuple[int, ...]
 
@@ -140,20 +142,35 @@ def normalize_notification_rule(raw_rule: Mapping[str, Any]) -> NotificationRule
 
     start_time = _clock_time(raw_rule["start_time"], "start_time")
     end_time = _clock_time(raw_rule["end_time"], "end_time")
-    if start_time >= end_time:
-        raise MatchingInputError("start_time must be before end_time")
+    start_minutes = _minutes(start_time)
+    end_minutes = _minutes(end_time)
+    if (
+        start_minutes < 8 * 60
+        or end_minutes > 13 * 60
+        or start_time.minute != 0
+        or end_time.minute != 0
+        or end_minutes - start_minutes < 120
+    ):
+        raise MatchingInputError(
+            "notification time must be a whole-hour range of at least two hours between 08:00 and 13:00"
+        )
 
     minimum_duration = raw_rule["minimum_duration_minutes"]
     if (
         isinstance(minimum_duration, bool)
         or not isinstance(minimum_duration, int)
-        or minimum_duration < 30
-        or minimum_duration > 720
-        or minimum_duration % 30 != 0
+        or minimum_duration < 60
+        or minimum_duration > 300
+        or minimum_duration % 60 != 0
+        or minimum_duration > end_minutes - start_minutes
     ):
         raise MatchingInputError(
-            "minimum_duration_minutes must be 30 to 720 in 30 minute steps"
+            "minimum_duration_minutes must be 60 to 300 in 60 minute steps and fit the notification time range"
         )
+
+    include_holidays = raw_rule["include_holidays"]
+    if not isinstance(include_holidays, bool):
+        raise MatchingInputError("include_holidays must be a boolean")
 
     raw_facility_ids = raw_rule["facility_ids"]
     if not isinstance(raw_facility_ids, list):
@@ -175,10 +192,10 @@ def normalize_notification_rule(raw_rule: Mapping[str, Any]) -> NotificationRule
         if (
             isinstance(weekday, bool)
             or not isinstance(weekday, int)
-            or weekday < 1
+            or weekday < 6
             or weekday > 7
         ):
-            raise MatchingInputError("weekdays must contain ISO values 1 through 7")
+            raise MatchingInputError("weekdays must contain Saturday or Sunday")
         weekdays.add(weekday)
 
     return NotificationRule(
@@ -190,6 +207,7 @@ def normalize_notification_rule(raw_rule: Mapping[str, Any]) -> NotificationRule
         start_time=start_time,
         end_time=end_time,
         minimum_duration_minutes=minimum_duration,
+        include_holidays=include_holidays,
         facility_ids=facility_ids,
         weekdays=tuple(sorted(weekdays)),
     )
@@ -218,6 +236,7 @@ def _normalize_slot(
     facility_id: str,
     facility_name: str,
     entry_date: date,
+    is_holiday: bool,
 ) -> dict[str, Any]:
     if not isinstance(raw_slot, Mapping):
         raise MatchingInputError("each availability slot must be an object")
@@ -261,6 +280,7 @@ def _normalize_slot(
         "reservation_url": _non_empty_string(
             raw_slot["reservation_url"], "reservation_url"
         ),
+        "_is_holiday": is_holiday,
     }
 
 
@@ -292,6 +312,7 @@ def extract_available_slots(
             ):
                 continue
             entry_date = _iso_date(date_entry.get("date"), "date entry date")
+            is_holiday = date_entry.get("day_type") == "holiday"
             raw_slots = date_entry.get("availability")
             if not isinstance(raw_slots, list):
                 raise MatchingInputError("date entry availability must be an array")
@@ -301,6 +322,7 @@ def extract_available_slots(
                     facility_id=facility_id,
                     facility_name=facility_name,
                     entry_date=entry_date,
+                    is_holiday=is_holiday,
                 )
                 if slot["status"] != "available":
                     continue
@@ -338,12 +360,16 @@ def _match_normalized_rules_to_slots(
         slot_end_minutes = _minutes(slot_end)
 
         for rule in rules:
+            matches_day = (
+                slot_date.isoweekday() in rule.weekdays
+                or (rule.include_holidays and slot.get("_is_holiday") is True)
+            )
             if (
                 not rule.is_enabled
                 or not rule.facility_ids
-                or not rule.weekdays
+                or (not rule.weekdays and not rule.include_holidays)
                 or slot["facility_id"] not in rule.facility_ids
-                or slot_date.isoweekday() not in rule.weekdays
+                or not matches_day
                 or (rule.date_from is not None and slot_date < rule.date_from)
                 or (rule.date_to is not None and slot_date > rule.date_to)
             ):
@@ -368,7 +394,11 @@ def _match_normalized_rules_to_slots(
                 candidate_key,
                 {
                     "user_id": rule.user_id,
-                    **dict(slot),
+                    **{
+                        key: value
+                        for key, value in slot.items()
+                        if not key.startswith("_")
+                    },
                     "matched_rules": [],
                 },
             )

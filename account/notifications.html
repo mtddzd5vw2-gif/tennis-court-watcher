@@ -7,9 +7,9 @@
     <meta name="robots" content="noindex">
     <meta
       name="description"
-      content="Tennis Court Watcherの通知条件を作成・編集する会員向け画面です。"
+      content="Tennis Court Watcherの空き通知を設定する会員向け画面です。"
     >
-    <title>通知条件 | Tennis Court Watcher</title>
+    <title>空き通知 | Tennis Court Watcher</title>
     <link rel="stylesheet" href="../assets/css/auth.css">
     <script src="../assets/config/auth-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.2/dist/umd/supabase.js"></script>
@@ -30,9 +30,9 @@
       <div class="notification-page-heading">
         <div>
           <p class="eyebrow">Notification rules</p>
-          <h1>通知条件</h1>
+          <h1>空き通知</h1>
           <p class="lead">
-            空きを知らせてほしい施設・曜日・時間帯を登録できます。
+            空きを知らせてほしい施設・日・時間帯を登録できます。
           </p>
         </div>
         <div class="page-links" aria-label="ページ移動">
@@ -51,9 +51,9 @@
         aria-labelledby="membership-required-title"
         hidden
       >
-        <h2 id="membership-required-title">通知条件を利用するには規約同意が必要です</h2>
+        <h2 id="membership-required-title">空き通知を利用するには規約同意が必要です</h2>
         <p>
-          現在の会員状態では通知条件を操作できません。
+          現在の会員状態では空き通知を操作できません。
           マイページで現行の利用規約を確認し、同意手続きを完了してください。
         </p>
         <a class="button" href="index.html">マイページで規約に同意する</a>
@@ -70,7 +70,7 @@
             <input type="checkbox" data-email-notification-toggle>
             <span>
               <strong>空き通知メールを受け取る</strong>
-              <small>登録した通知条件に一致する空きが見つかったときに送信します。</small>
+              <small>登録した希望に合う空きが見つかったときに送信します。</small>
             </span>
           </label>
           <p class="form-note" data-email-notification-guidance></p>
@@ -90,7 +90,7 @@
 
         <div class="notification-toolbar">
           <div>
-            <h2 id="notification-rule-list-title">登録済みの通知条件</h2>
+            <h2 id="notification-rule-list-title">登録済みの空き通知</h2>
             <p class="muted" data-notification-rule-count aria-live="polite">
               登録済み 0 / 5件
             </p>
@@ -99,7 +99,7 @@
             </p>
           </div>
           <button class="button" type="button" data-new-rule>
-            新しい通知条件
+            新しい空き通知
           </button>
         </div>
 
@@ -109,7 +109,7 @@
           aria-live="polite"
           hidden
         >
-          通知条件は最大5件まで登録できます。追加するには既存の条件を削除してください。
+          空き通知は最大5件まで登録できます。追加するには既存の設定を削除してください。
         </p>
 
         <p
@@ -125,10 +125,10 @@
           hidden
         >
           <h2 id="notification-rule-form-title" data-rule-form-title>
-            新しい通知条件
+            新しい空き通知
           </h2>
           <p class="form-note">
-            希望する施設と利用時間を選択してください。
+            希望する施設・日・時間帯・利用時間を選択してください。
           </p>
 
           <form data-notification-rule-form novalidate>
@@ -169,14 +169,98 @@
               </div>
             </fieldset>
 
-            <section
-              class="notice"
-              data-fixed-notification-policy
-              aria-label="通知対象"
+            <fieldset
+              class="rule-fieldset"
+              data-day-fieldset
+              tabindex="-1"
             >
-              <strong>通知対象</strong>
-              <p>土日・祝日、8:00〜13:00</p>
-            </section>
+              <legend>通知する日</legend>
+              <div class="checkbox-grid checkbox-grid--days">
+                <label class="check-option">
+                  <input
+                    type="checkbox"
+                    name="weekdays"
+                    value="6"
+                    data-rule-weekday
+                    checked
+                  >
+                  <span>土曜</span>
+                </label>
+                <label class="check-option">
+                  <input
+                    type="checkbox"
+                    name="weekdays"
+                    value="7"
+                    data-rule-weekday
+                    checked
+                  >
+                  <span>日曜</span>
+                </label>
+                <label class="check-option">
+                  <input
+                    type="checkbox"
+                    name="include_holidays"
+                    data-rule-holiday
+                    checked
+                  >
+                  <span>祝日</span>
+                </label>
+              </div>
+              <p class="form-note">1つ以上選択してください。</p>
+            </fieldset>
+
+            <fieldset
+              class="rule-fieldset"
+              data-time-fieldset
+              tabindex="-1"
+            >
+              <legend>通知する時間帯</legend>
+              <div class="time-choice-group">
+                <div>
+                  <span class="time-choice-label">開始</span>
+                  <div class="time-choice-grid">
+                    <label class="time-choice">
+                      <input type="radio" name="start_time" value="08:00" data-rule-start-time checked>
+                      <span>8時</span>
+                    </label>
+                    <label class="time-choice">
+                      <input type="radio" name="start_time" value="09:00" data-rule-start-time>
+                      <span>9時</span>
+                    </label>
+                    <label class="time-choice">
+                      <input type="radio" name="start_time" value="10:00" data-rule-start-time>
+                      <span>10時</span>
+                    </label>
+                    <label class="time-choice">
+                      <input type="radio" name="start_time" value="11:00" data-rule-start-time>
+                      <span>11時</span>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <span class="time-choice-label">終了</span>
+                  <div class="time-choice-grid">
+                    <label class="time-choice">
+                      <input type="radio" name="end_time" value="10:00" data-rule-end-time>
+                      <span>10時</span>
+                    </label>
+                    <label class="time-choice">
+                      <input type="radio" name="end_time" value="11:00" data-rule-end-time>
+                      <span>11時</span>
+                    </label>
+                    <label class="time-choice">
+                      <input type="radio" name="end_time" value="12:00" data-rule-end-time>
+                      <span>12時</span>
+                    </label>
+                    <label class="time-choice">
+                      <input type="radio" name="end_time" value="13:00" data-rule-end-time checked>
+                      <span>13時</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <p class="form-note">8:00〜13:00の中から、2時間以上の範囲を選べます。</p>
+            </fieldset>
 
             <fieldset class="rule-fieldset">
               <legend>対象期間</legend>
@@ -228,14 +312,14 @@
                 data-rule-enabled
               >
               <span>
-                <strong>この通知条件を有効にする</strong>
+                <strong>この空き通知を有効にする</strong>
                 <small>オフの場合は停止中として保存されます。</small>
               </span>
             </label>
 
             <div class="button-row">
               <button class="button" type="submit" data-save-rule>
-                通知条件を保存
+                空き通知を保存
               </button>
               <button
                 class="button button--secondary"
@@ -260,15 +344,15 @@
           aria-labelledby="notification-empty-title"
           hidden
         >
-          <h2 id="notification-empty-title">通知条件はまだありません</h2>
+          <h2 id="notification-empty-title">空き通知はまだありません</h2>
           <p>
-            「新しい通知条件」から、希望する施設や曜日を登録してください。
+            「新しい空き通知」から、希望する施設・日・時間帯を登録してください。
           </p>
         </section>
       </div>
 
       <noscript>
-        <p class="notice">通知条件を操作するにはJavaScriptを有効にしてください。</p>
+        <p class="notice">空き通知を操作するにはJavaScriptを有効にしてください。</p>
       </noscript>
     </main>
 

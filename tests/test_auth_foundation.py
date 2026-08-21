@@ -278,6 +278,16 @@ def auth_page_loader(browser: Browser):
                 window.sessionStorage.setItem("tcw.pendingTermsAcceptance", "1");
                 window.sessionStorage.setItem("mock-pending-initialized", "1");
               }}
+              if (
+                window.__mockAuth.pendingDestination &&
+                !window.sessionStorage.getItem("mock-destination-initialized")
+              ) {{
+                window.sessionStorage.setItem(
+                  "tcw.pendingAuthDestination",
+                  window.__mockAuth.pendingDestination,
+                );
+                window.sessionStorage.setItem("mock-destination-initialized", "1");
+              }}
             """
         )
 
@@ -292,7 +302,13 @@ def auth_page_loader(browser: Browser):
                 return
 
             relative_path = parsed.path.removeprefix("/project/")
-            if relative_path in {
+            if relative_path == "account/notifications.html":
+                route.fulfill(
+                    status=200,
+                    content_type="text/html",
+                    body="<!doctype html><title>空き通知</title>",
+                )
+            elif relative_path in {
                 "auth/login.html",
                 "auth/callback.html",
                 "account/index.html",
@@ -1039,6 +1055,42 @@ def test_signup_requires_terms_consent_and_marks_pending_acceptance(
     assert messages == []
 
 
+def test_availability_alert_route_opens_first_time_mode_and_remembers_target(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "auth/login.html?mode=signup&next=notifications"
+    )
+    form = page.locator("[data-auth-form]")
+    form.wait_for(state="visible")
+
+    assert page.locator('[data-auth-mode="signup"]').get_attribute(
+        "aria-pressed"
+    ) == "true"
+    assert page.locator("[data-signup-consent]").is_visible()
+    page.locator('input[name="email"]').fill("new-member@example.test")
+    page.locator('input[name="terms-consent"]').check()
+    page.locator('button[type="submit"]').click()
+    page.locator('[data-form-status][data-state="success"]').wait_for()
+
+    assert page.evaluate(
+        'window.sessionStorage.getItem("tcw.pendingAuthDestination")'
+    ) == "notifications"
+    assert messages == []
+
+
+def test_logged_in_availability_alert_route_opens_notifications(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "auth/login.html?mode=signup&next=notifications",
+        {"sessionEmail": "member@example.test"},
+    )
+
+    page.wait_for_url("http://pages.test/project/account/notifications.html")
+    assert messages == []
+
+
 def test_unknown_login_account_uses_neutral_success_message(
     auth_page_loader,
 ) -> None:
@@ -1127,7 +1179,7 @@ def test_login_with_existing_session_replaces_route_without_sending_magic_link(
     assert page.evaluate(
         'window.sessionStorage.getItem("mock-sign-in-called")'
     ) is None
-    assert "window.location.replace(ACCOUNT_PATH)" in read(
+    assert "window.location.replace(destination)" in read(
         "assets/js/auth-foundation.js"
     )
     assert messages == []
@@ -1170,6 +1222,21 @@ def test_pkce_callback_exchanges_code_scrubs_url_and_opens_account(
         'window.sessionStorage.getItem("mock-exchanged-code")'
     ) == "one-time-code"
     assert page.locator("[data-account-email]").inner_text() == "member@example.test"
+    assert messages == []
+
+
+def test_pkce_callback_opens_remembered_availability_alert_destination(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "auth/callback.html?code=one-time-code",
+        {
+            "sessionEmail": "member@example.test",
+            "pendingDestination": "notifications",
+        },
+    )
+
+    page.wait_for_url("http://pages.test/project/account/notifications.html")
     assert messages == []
 
 
