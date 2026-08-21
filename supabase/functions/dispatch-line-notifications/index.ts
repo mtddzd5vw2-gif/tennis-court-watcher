@@ -350,7 +350,7 @@ function readQuotaLimit(value: string | undefined): number | null {
     return null;
   }
   const limit = Number(value);
-  return Number.isInteger(limit) && limit >= 1 && limit <= 200 ? limit : null;
+  return Number.isInteger(limit) && limit >= 1 && limit <= 180 ? limit : null;
 }
 
 function readBearerToken(value: string | null): string | null {

@@ -135,6 +135,8 @@ def test_line_worker_retry_and_acceptance_are_normalized() -> None:
     retryable_codes = failure.split("v_retryable :=", 1)[1].split(");", 1)[0]
     assert "line_rate_limited" not in retryable_codes
     assert "line_quota_exceeded" not in retryable_codes
+    assert "worker_internal_error" not in retryable_codes
+    assert "line_unexpected_response" not in retryable_codes
 
     helpers = read(WORKER / "helpers.ts")
     assert 'status === 429' in helpers
@@ -184,6 +186,7 @@ def test_worker_checks_quota_before_claim_and_uses_retry_key() -> None:
     send = source.index("fetch(LINE_PUSH_ENDPOINT")
     assert quota < claim < send
     assert "Math.min(batchSize, remainingQuota)" in source
+    assert "limit <= 180" in source
     assert 'Deno.env.get("ENABLE_USER_LINE_NOTIFICATIONS") !== "true"' in source
     assert '"x-line-retry-key": deterministicLineRetryKey(' in source
     assert 'response.headers.get("x-line-accepted-request-id")' in source

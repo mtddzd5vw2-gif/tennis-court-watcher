@@ -1141,10 +1141,8 @@ begin
 
   v_retryable := p_error_code = any (
     array[
-      'worker_internal_error',
       'line_network_error',
-      'line_server_error',
-      'line_unexpected_response'
+      'line_server_error'
     ]::text[]
   );
 

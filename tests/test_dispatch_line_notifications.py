@@ -65,7 +65,7 @@ def test_dispatch_request_has_worker_only_contract() -> None:
     "value",
     [
         {"claimed_count": 0},
-        metrics(quota_limit=201),
+        metrics(quota_limit=181),
         metrics(quota_exhausted=True),
         metrics(accepted_count=2),
         metrics(quota_consumption=True),

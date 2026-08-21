@@ -57,7 +57,7 @@ canaryも明示的な全会員許可もない場合に失敗する。`allow all`
 | `LINE_CHANNEL_ACCESS_TOKEN` | Messaging API Pushと月間使用量取得 |
 | `LINE_DELIVERY_WORKER_SECRET` | GitHub ActionsからLINE workerだけを呼び出す高entropy bearer secret |
 | `LINE_DELIVERY_PAYLOAD_HMAC_KEY` | recipientとpayloadの整合性fingerprint。worker secretと別の値 |
-| `LINE_MONTHLY_PUSH_LIMIT` | 初期値`180`。1以上200以下 |
+| `LINE_MONTHLY_PUSH_LIMIT` | ハード上限`180`。1以上180以下 |
 | `ENABLE_USER_LINE_NOTIFICATIONS` | Edge Function内の最終gate。初期値`false` |
 
 `SUPABASE_URL`と`SUPABASE_SERVICE_ROLE_KEY`はSupabase hosted Edge Functionへ自動提供される。

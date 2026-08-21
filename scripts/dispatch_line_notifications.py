@@ -119,7 +119,7 @@ def _validate_metrics(value: Any) -> dict[str, int | bool]:
         + int(normalized["cancelled_count"])
         > int(normalized["claimed_count"])
         or int(normalized["quota_limit"]) < 1
-        or int(normalized["quota_limit"]) > 200
+        or int(normalized["quota_limit"]) > 180
         or bool(normalized["quota_exhausted"])
         != (
             int(normalized["quota_consumption"])
