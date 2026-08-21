@@ -377,6 +377,7 @@
     const deleteCancel = document.querySelector("[data-delete-account-cancel]");
     const deleteStatus = document.querySelector("[data-delete-account-status]");
     const status = document.querySelector("[data-action-status]");
+    let lineAccountLinkInitialized = false;
 
     let session;
     try {
@@ -401,6 +402,31 @@
     content.hidden = false;
     logout.disabled = false;
     deleteStart.disabled = false;
+
+    const setupLineAccountLink = async (membershipStatus) => {
+      if (
+        membershipStatus !== "active" ||
+        lineAccountLinkInitialized ||
+        !window.TCW_LINE_ACCOUNT_LINK ||
+        typeof window.TCW_LINE_ACCOUNT_LINK.setup !== "function"
+      ) {
+        return;
+      }
+      lineAccountLinkInitialized = true;
+      try {
+        await window.TCW_LINE_ACCOUNT_LINK.setup(client);
+      } catch {
+        const linePanel = document.querySelector("[data-line-link-panel]");
+        if (linePanel) {
+          linePanel.hidden = false;
+        }
+        setStatus(
+          document.querySelector("[data-line-link-action-status]"),
+          "LINE連携機能を読み込めませんでした。時間をおいて再読み込みしてください。",
+          "error",
+        );
+      }
+    };
 
     const loadAccountData = async () => {
       setStatus(loading, "会員情報を確認しています…");
@@ -452,6 +478,7 @@
       consentButton.disabled = true;
       setStatus(consentStatus, "");
       loading.hidden = true;
+      return profile.membership_status;
     };
 
     consentInput.addEventListener("change", () => {
@@ -473,7 +500,8 @@
         }
         clearPendingTermsAcceptance();
         rememberPendingDestination(ACCOUNT_PATH);
-        await loadAccountData();
+        const membershipStatus = await loadAccountData();
+        await setupLineAccountLink(membershipStatus);
         setStatus(status, "利用規約への同意を登録しました。", "success");
       } catch {
         setStatus(
@@ -591,7 +619,8 @@
     });
 
     try {
-      await loadAccountData();
+      const membershipStatus = await loadAccountData();
+      await setupLineAccountLink(membershipStatus);
     } catch {
       setStatus(
         loading,

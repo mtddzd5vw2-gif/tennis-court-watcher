@@ -447,8 +447,8 @@ Actionsで照合を実行するには、Repository Variable
 LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人向け安全な状態RPCは
 `20260821051500_add_line_account_link_foundation.sql`で前方追加する。
 LINE Login開始・callback・解除のEdge Functionと、原子的なsession消費・一対一連携・
-解除RPCはコード実装済みである。本番migration/Function deployとMy Page UIは未完了で、
-[LINE account link Runbook](./PHASE4_LINE_ACCOUNT_LINK_RUNBOOK.md)の順序で進める。
+解除RPCは本番反映済みである。My Pageの連携状態・開始・二段階解除UIも実装し、
+次はスマホでの正方向acceptanceとwebhookを進める。
 
 ### 目的
 

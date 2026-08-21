@@ -17,9 +17,10 @@ Included:
 - `20260821073000_add_line_account_link_rpcs.sql`: service-role-only atomic
   session and link RPCs.
 
-Not included:
+Not included in the server deployment itself:
 
-- My Page buttons and result messages.
+- My Page buttons and result messages. These are implemented in the following
+  UI rollout and do not change the database or Function secrets.
 - LINE webhook handling.
 - LINE notification queue or push worker.
 - Enabling LINE delivery for any member.
@@ -115,8 +116,8 @@ verified ID token, and the stored nonce hash.
 
 ## 6. Acceptance boundary
 
-Before the My Page UI PR, verify these server boundaries without storing or
-printing tokens:
+Before releasing the My Page UI, verify these server boundaries without
+storing or printing tokens:
 
 1. Start and unlink return `401` without a user JWT.
 2. Callback rejects POST with `405`.

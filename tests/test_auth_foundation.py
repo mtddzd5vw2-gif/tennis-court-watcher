@@ -26,6 +26,7 @@ STATIC_PAGES = (
 STATIC_ASSETS = (
     Path("assets/css/auth.css"),
     Path("assets/js/auth-foundation.js"),
+    Path("assets/js/line-account-link.js"),
     Path("assets/js/notification-rules.js"),
     Path("assets/config/auth-config.example.js"),
     Path("scripts/generate_auth_config.py"),
@@ -178,7 +179,30 @@ window.supabase = {
             "mock-function-invoke",
             JSON.stringify(call),
           );
-          if (mock.deleteAccountError) {
+          if (name === "start-line-account-link") {
+            if (mock.lineStartError) {
+              return {
+                data: null,
+                error: { name: "FunctionsHttpError" },
+              };
+            }
+            return {
+              data: {
+                authorization_url:
+                  "https://access.line.me/oauth2/v2.1/authorize?mock=1",
+              },
+              error: null,
+            };
+          }
+          if (name === "unlink-line-account") {
+            return {
+              data: null,
+              error: mock.lineUnlinkError
+                ? { name: "FunctionsHttpError" }
+                : null,
+            };
+          }
+          if (name === "delete-account" && mock.deleteAccountError) {
             return {
               data: null,
               error: { name: "FunctionsHttpError" },
@@ -218,6 +242,22 @@ window.supabase = {
       },
       async rpc(name) {
         window.__authCalls.push({ method: "rpc", name });
+        if (name === "get_my_line_link_status") {
+          const linkStatus = mock.lineLinkStatus || "";
+          return {
+            data: linkStatus
+              ? [{
+                  is_linked: linkStatus !== "unlinked",
+                  link_status: linkStatus,
+                  linked_at: "2026-08-21T08:00:00Z",
+                  last_webhook_at: null,
+                }]
+              : [],
+            error: mock.lineStatusError
+              ? { name: "PostgrestError" }
+              : null,
+          };
+        }
         window.sessionStorage.setItem("mock-rpc-called", name);
         if (mock.rpcError) {
           return { data: null, error: { name: "PostgrestError" } };
@@ -306,6 +346,18 @@ def auth_page_loader(browser: Browser):
                 )
                 return
 
+            if (
+                parsed.scheme == "https"
+                and parsed.netloc == "access.line.me"
+                and parsed.path == "/oauth2/v2.1/authorize"
+            ):
+                route.fulfill(
+                    status=200,
+                    content_type="text/html",
+                    body="<!doctype html><title>LINE Login</title>",
+                )
+                return
+
             relative_path = parsed.path.removeprefix("/project/")
             if relative_path == "account/notifications.html":
                 route.fulfill(
@@ -330,6 +382,12 @@ def auth_page_loader(browser: Browser):
                     body=MOCK_AUTH_CONFIG,
                 )
             elif relative_path == "assets/js/auth-foundation.js":
+                route.fulfill(
+                    status=200,
+                    content_type="application/javascript",
+                    body=read(relative_path),
+                )
+            elif relative_path == "assets/js/line-account-link.js":
                 route.fulfill(
                     status=200,
                     content_type="application/javascript",
@@ -511,6 +569,36 @@ def test_member_pages_hide_internal_status_and_development_language() -> None:
         "data-terms-history",
     ):
         assert not account.find(attrs={selector: True})
+
+
+def test_account_line_link_ui_exposes_only_safe_status_and_confirmed_actions() -> None:
+    account = BeautifulSoup(read("account/index.html"), "html.parser")
+    script = read("assets/js/line-account-link.js")
+
+    panel = account.find(attrs={"data-line-link-panel": True})
+    assert panel
+    assert panel.has_attr("hidden")
+    assert account.find(attrs={"data-line-link-summary": True})
+    assert account.find(attrs={"data-line-link-start": True}).has_attr("disabled")
+    assert account.find(attrs={"data-line-unlink-start": True}).has_attr("hidden")
+    assert account.find(attrs={"data-line-unlink-panel": True}).has_attr("hidden")
+    assert account.find(attrs={"data-line-unlink-confirm": True})
+    assert account.find(attrs={"data-line-unlink-cancel": True})
+    assert account.find("script", src="../assets/js/line-account-link.js")
+
+    assert 'client.rpc("get_my_line_link_status")' in script
+    assert '"start-line-account-link"' in script
+    assert '"unlink-line-account"' in script
+    assert 'confirmation: "unlink-line-account"' in script
+    assert "window.history.replaceState" in script
+    assert '"https://access.line.me"' in script
+    assert '"/oauth2/v2.1/authorize"' in script
+    assert "window.location.assign(authorizationUrl)" in script
+    assert "line_user_id" not in script
+    assert "user_id" not in script
+    assert "localStorage" not in script
+    assert "console." not in script
+    assert "fetch(" not in script
 
 
 def test_legal_pages_are_formal_and_publish_operator_contact() -> None:
@@ -1372,6 +1460,125 @@ def test_account_checks_session_displays_email_and_signs_out(
     assert page.evaluate(
         'JSON.parse(window.sessionStorage.getItem("mock-sign-out-options"))'
     ) == {"scope": "local"}
+    assert messages == []
+
+
+def test_account_line_link_start_uses_authenticated_function_and_safe_redirect(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {"sessionEmail": "member@example.test"},
+    )
+    page.locator("[data-line-link-panel]:not([hidden])").wait_for()
+    start = page.locator("[data-line-link-start]")
+
+    assert "LINEは未連携" in page.locator(
+        "[data-line-link-summary]"
+    ).inner_text()
+    assert start.is_enabled()
+    start.click()
+    page.wait_for_url(re.compile(r"https://access\.line\.me/oauth2/v2\.1/authorize"))
+
+    page.go_back()
+    page.locator("[data-line-link-panel]:not([hidden])").wait_for()
+    function_call = page.evaluate(
+        'JSON.parse(window.sessionStorage.getItem("mock-function-invoke"))'
+    )
+    assert function_call == {
+        "method": "functions.invoke",
+        "name": "start-line-account-link",
+        "options": {"body": {}},
+    }
+    assert "user_id" not in json.dumps(function_call)
+    assert messages == []
+
+
+def test_account_line_link_callback_result_is_shown_then_scrubbed(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html?line_link=success&code=must-not-remain#token=secret",
+        {
+            "sessionEmail": "member@example.test",
+            "lineLinkStatus": "active",
+        },
+    )
+    page.locator('[data-line-link-result][data-state="success"]').wait_for()
+
+    assert page.url == "http://pages.test/project/account/index.html"
+    assert "LINEアカウントを連携しました" in page.locator(
+        "[data-line-link-result]"
+    ).inner_text()
+    assert "LINE通知は連携済み" in page.locator(
+        "[data-line-link-summary]"
+    ).inner_text()
+    assert page.locator("[data-line-link-start]").is_hidden()
+    assert page.locator("[data-line-unlink-start]").is_visible()
+    assert "must-not-remain" not in page.locator("body").inner_text()
+    assert "secret" not in page.locator("body").inner_text()
+    assert messages == []
+
+
+def test_account_line_unlink_requires_two_steps_and_sends_no_identity(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {
+            "sessionEmail": "member@example.test",
+            "lineLinkStatus": "active",
+        },
+    )
+    page.locator("[data-line-link-panel]:not([hidden])").wait_for()
+    unlink_start = page.locator("[data-line-unlink-start]")
+    unlink_panel = page.locator("[data-line-unlink-panel]")
+
+    assert unlink_panel.is_hidden()
+    unlink_start.click()
+    assert unlink_panel.is_visible()
+    page.locator("[data-line-unlink-confirm]").click()
+    page.locator('[data-line-link-action-status][data-state="success"]').wait_for()
+
+    function_call = page.evaluate(
+        'JSON.parse(window.sessionStorage.getItem("mock-function-invoke"))'
+    )
+    assert function_call == {
+        "method": "functions.invoke",
+        "name": "unlink-line-account",
+        "options": {
+            "body": {"confirmation": "unlink-line-account"},
+        },
+    }
+    serialized = json.dumps(function_call)
+    assert "user_id" not in serialized
+    assert "member@example.test" not in serialized
+    assert "LINEは未連携" in page.locator(
+        "[data-line-link-summary]"
+    ).inner_text()
+    assert unlink_panel.is_hidden()
+    assert messages == []
+
+
+def test_account_line_friend_required_offers_safe_refresh_and_unlink(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html?line_link=friend_required",
+        {
+            "sessionEmail": "member@example.test",
+            "lineLinkStatus": "blocked",
+        },
+    )
+    page.locator('[data-line-link-result][data-state="warning"]').wait_for()
+
+    assert "友だち追加" in page.locator("[data-line-link-result]").inner_text()
+    assert "友だち追加の確認が必要" in page.locator(
+        "[data-line-link-summary]"
+    ).inner_text()
+    assert page.locator("[data-line-link-start]").is_enabled()
+    assert page.locator("[data-line-unlink-start]").is_enabled()
+    assert page.url == "http://pages.test/project/account/index.html"
     assert messages == []
 
 

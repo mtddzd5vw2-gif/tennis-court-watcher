@@ -18,7 +18,8 @@ active会員確認、state/nonceの一回限り消費、1会員1LINE・1LINE1会
 強制するservice-role専用`SECURITY INVOKER` RPCを実装した。callbackはLINE公式の
 token endpoint、ID token verify endpoint、friendship endpointを使用し、検証後の
 user access tokenはbest-effortでrevokeしてDBへ保存しない。本番migration、Function
-secrets、deploy、My Page UI、スマホacceptanceは未実施である。導入順は
+secrets、deploy、HTTP境界acceptanceは完了した。My Page UIも実装済みで、スマホでの
+正方向acceptanceは未実施である。導入順は
 [LINE account link Runbook](./PHASE4_LINE_ACCOUNT_LINK_RUNBOOK.md)を正とする。
 
 ## 2. 採用方式
@@ -152,8 +153,8 @@ LINE display name、profile image、status message、email addressは取得し�
 
 1. LINE provider、公式アカウント、Messaging API channel、LINE Login channelを同一providerに準備する。
 2. schema、RLS、Grant、link session、account linkのmigrationを作る。— 完了
-3. LINE Login開始・callback・解除Edge Functionを実装する。— コード完了、本番未反映
-4. My Pageへ連携状態と操作UIを追加する。
+3. LINE Login開始・callback・解除Edge Functionを実装する。— 本番反映・HTTP境界確認完了
+4. My Pageへ連携状態と操作UIを追加する。— 実装完了、スマホacceptance待ち
 5. webhook署名検証、冪等化、block/unfollow反映を実装する。
 6. 月間使用量の週次報告と180通警告を有効化する。
 7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。
