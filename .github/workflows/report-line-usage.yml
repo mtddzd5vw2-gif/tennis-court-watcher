@@ -78,6 +78,7 @@ jobs:
           LINE_USAGE_WARNING_THRESHOLD: ${{ vars.LINE_USAGE_WARNING_THRESHOLD || '180' }}
           WEEKLY_REPORT: ${{ steps.report-mode.outputs.weekly }}
           WARNING_ALREADY_SENT: ${{ steps.warning-marker.outputs.cache-hit || false }}
+          IDEMPOTENCY_SUFFIX: ${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}
         run: |
           report_args=(
             --warning-marker run-state/line-usage-warning
@@ -90,6 +91,9 @@ jobs:
           fi
           if [[ "${DRY_RUN}" == "true" ]]; then
             report_args+=(--dry-run)
+          fi
+          if [[ -n "${IDEMPOTENCY_SUFFIX}" ]]; then
+            report_args+=(--idempotency-suffix "${IDEMPOTENCY_SUFFIX}")
           fi
 
           python scripts/report_line_usage.py "${report_args[@]}"
