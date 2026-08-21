@@ -302,7 +302,13 @@ def auth_page_loader(browser: Browser):
                 return
 
             relative_path = parsed.path.removeprefix("/project/")
-            if relative_path in {
+            if relative_path == "account/notifications.html":
+                route.fulfill(
+                    status=200,
+                    content_type="text/html",
+                    body="<!doctype html><title>空き通知</title>",
+                )
+            elif relative_path in {
                 "auth/login.html",
                 "auth/callback.html",
                 "account/index.html",
