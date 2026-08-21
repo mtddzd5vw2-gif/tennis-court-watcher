@@ -265,6 +265,52 @@ def test_email_failures_do_not_block_artifact_commit_or_pages_inputs() -> None:
         )
 
 
+def test_user_line_enqueue_defaults_to_shadow_and_requires_explicit_rollout() -> None:
+    workflow = load_workflow()
+    step = named_step(workflow, "Enqueue user LINE notifications")
+
+    assert step["if"] == (
+        "vars.ENABLE_NOTIFICATION_MATCHING == 'true' && "
+        "vars.ENABLE_USER_LINE_ENQUEUE == 'true' && "
+        "env.DRY_RUN != 'true'"
+    )
+    assert step["continue-on-error"] is True
+    assert step["env"] == {
+        "SUPABASE_URL": "${{ vars.SUPABASE_URL }}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+        "LINE_NOTIFICATION_SHADOW_MODE": (
+            "${{ vars.LINE_NOTIFICATION_SHADOW_MODE || 'true' }}"
+        ),
+        "LINE_NOTIFICATION_CANARY_USER_ID": (
+            "${{ secrets.LINE_NOTIFICATION_CANARY_USER_ID }}"
+        ),
+        "LINE_NOTIFICATION_ALLOW_ALL": (
+            "${{ vars.LINE_NOTIFICATION_ALLOW_ALL || 'false' }}"
+        ),
+    }
+    assert "scripts/enqueue_line_notifications.py" in step["run"]
+
+
+def test_user_line_dispatch_is_separately_gated_and_has_no_provider_token() -> None:
+    workflow = load_workflow()
+    step = named_step(workflow, "Dispatch user LINE notifications")
+
+    assert step["if"] == (
+        "vars.ENABLE_USER_LINE_DISPATCH == 'true' && "
+        "vars.LINE_NOTIFICATION_SHADOW_MODE == 'false' && "
+        "env.DRY_RUN != 'true'"
+    )
+    assert step["continue-on-error"] is True
+    assert step["env"] == {
+        "SUPABASE_URL": "${{ vars.SUPABASE_URL }}",
+        "LINE_DELIVERY_WORKER_SECRET": (
+            "${{ secrets.LINE_DELIVERY_WORKER_SECRET }}"
+        ),
+    }
+    assert "LINE_CHANNEL_ACCESS_TOKEN" not in step["env"]
+    assert step["run"] == "python scripts/dispatch_line_notifications.py"
+
+
 def test_legacy_administrator_line_inputs_environment_and_state_are_absent() -> None:
     workflow = load_workflow()
     job = workflow["jobs"]["update"]

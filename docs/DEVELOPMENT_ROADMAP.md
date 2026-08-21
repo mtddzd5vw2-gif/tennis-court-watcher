@@ -441,14 +441,17 @@ Actionsで照合を実行するには、Repository Variable
 
 ## Phase 4: LINE公式アカウント連携と利用者別LINE通知
 
-**状態: 実装着手。Launch Readiness Gate完了。**
+**状態: account link本番確認済み。利用者別配信は初期OFFで実装・隔離環境検証済み。**
 
 [Phase 4 LINE通知設計](./PHASE4_LINE_NOTIFICATION_DESIGN.md)で採用方式と実装順序を定義する。
 LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人向け安全な状態RPCは
 `20260821051500_add_line_account_link_foundation.sql`で前方追加する。
 LINE Login開始・callback・解除のEdge Functionと、原子的なsession消費・一対一連携・
 解除RPCは本番反映済みである。My Pageの連携状態・開始・二段階解除UIも実装し、
-次はスマホでの正方向acceptanceとwebhookを進める。
+2026-08-21にスマホでの正方向acceptanceを完了した。署名検証webhook、冪等な
+block/unfollow反映、利用者別`line` channel queue、worker、retry、180通guardは
+初期OFFで実装し、隔離ローカルDBで検証済みである。本番migration・Function deploy・
+shadow/canary/限定βの段階有効化とproduction acceptanceは未完了である。
 
 ### 目的
 

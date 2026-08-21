@@ -7,7 +7,7 @@
 
 2026-08-21時点でPhase 0〜3は完了している。
 Phase 1の退会もproduction acceptanceまで完了した。
-Phase 4はaccount linkのDB基盤とLINE Login server-side境界を本番反映し、My Pageの連携状態・開始・二段階解除UIまで実装済みである。スマホでの正方向acceptance、webhook、利用者別LINE配信以降は未完了である。
+Phase 4はaccount linkのDB基盤とLINE Login server-side境界を本番反映し、My Pageの連携状態・開始・二段階解除UIとスマホでの正方向acceptanceまで完了している。webhookと利用者別LINE配信は初期OFFで実装・隔離環境検証済みだが、本番migration・Function deploy・段階有効化・production acceptanceは未完了である。
 
 長期的な目的は[Project Vision](./PROJECT_VISION.md)、
 現在地・実装順序・完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
@@ -318,7 +318,7 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 
 現行の配信事業者はResendである。queue、再試行、delivery feedback、配信停止、90日retentionは実装済みである。将来の利用規模に応じた送信上限、アラート閾値、ダイジェスト等の追加配信方式は必要性を確認して見直す。
 
-## 13. 将来のLINE連携
+## 13. LINE連携と利用者別配信
 
 利用者別LINE通知はPhase 4で提供する。Phase 0の単一通知先によるlegacy運用者向けLINE通知はPhase 3.4.3で退役済みであり、Phase 4では再利用しない。
 
@@ -340,7 +340,18 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - LINE Login開始・callback・解除はEdge Functionへ集約する。開始・解除はSupabase JWTから本人を決定し、callbackは一回限りのstate、LINE authorization code、検証済みID token、nonce hashで認証する。callback URLへSupabase tokenを渡さず、LINE access/ID/refresh tokenを永続化しない。
 - callbackはLINE Login APIで友だち状態も確認し、未追加・block状態は`blocked`として保存する。user access tokenは処理後にbest-effortでrevokeし、通常ログへauthorization code、state、nonce、LINE user ID、tokenを出さない。
 
-### 13.3 配信予算
+### 13.3 配信境界
+
+- 既存のnotification rule matchingを共用し、emailとLINEの候補判定を一致させる。
+- 重複防止の正は`unique (user_id, channel, slot_id)`とし、emailとLINEを別channelとして保持する。
+- email workerとLINE workerは明示的なchannel条件と別credentialを持ち、互いのmessageをclaimしない。
+- LINE enqueueは初期OFFかつshadowを既定とする。live enqueueは単一会員canary、または明示的な全会員許可がなければfail closedする。
+- Messaging API webhookはraw bodyのHMAC-SHA256署名をJSON parse前に検証し、event IDで重複を排除する。保存対象はevent ID、event種別、発生時刻だけとし、LINE user IDやraw payloadをledgerへ保存しない。
+- Push送信では内部message UUIDを最初の試行からretry keyとして固定し、同じrecipientとpayloadの再送だけを許可する。providerの5xx・timeoutだけをbounded retryし、client error・無効token・上限到達は再送しない。
+- LINE tokenはEdge Function secretに留め、GitHub availability workflowへ渡さない。workflowのdispatch stepは高entropyな専用worker secretだけを持つ。
+- 停止時はenqueue、dispatch、Edge Functionの3つのgateを閉じ、lease失効後に未送信LINE backlogを取消す。email channelは停止しない。
+
+### 13.4 配信予算
 
 - LINE公式アカウントは月200通の無料枠で運用し、自動で有料プランへ変更しない。
 - LINE Pushの月間運用上限は180通とする。送信直前に公式APIの月間使用量を
@@ -623,8 +634,8 @@ Phase 4のLINE連携解除、Phase 5の有料契約処理は各Phaseで追加す
 - GPSによる地域制限、現在地の常時取得
 - 鹿児島市以外の地域対応
 - テニスコート以外の施設種別
-- 利用者別LINE通知
-- LINEログイン、ソーシャルログイン
+- 利用者別LINE通知の本番提供
+- LINE以外のソーシャルログイン
 - 有料プラン、決済
 - 利用者向け通知履歴画面
 - AIによる空き予測・おすすめ

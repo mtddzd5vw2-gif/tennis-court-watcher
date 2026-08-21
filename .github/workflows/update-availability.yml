@@ -117,6 +117,33 @@ jobs:
           EMAIL_DELIVERY_WORKER_SECRET: ${{ secrets.EMAIL_DELIVERY_WORKER_SECRET }}
         run: python scripts/dispatch_email_notifications.py
 
+      - name: Enqueue user LINE notifications
+        if: >-
+          vars.ENABLE_NOTIFICATION_MATCHING == 'true' &&
+          vars.ENABLE_USER_LINE_ENQUEUE == 'true' &&
+          env.DRY_RUN != 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LINE_NOTIFICATION_SHADOW_MODE: ${{ vars.LINE_NOTIFICATION_SHADOW_MODE || 'true' }}
+          LINE_NOTIFICATION_CANARY_USER_ID: ${{ secrets.LINE_NOTIFICATION_CANARY_USER_ID }}
+          LINE_NOTIFICATION_ALLOW_ALL: ${{ vars.LINE_NOTIFICATION_ALLOW_ALL || 'false' }}
+        run: >-
+          python scripts/enqueue_line_notifications.py
+          --availability run-output/availability.json
+
+      - name: Dispatch user LINE notifications
+        if: >-
+          vars.ENABLE_USER_LINE_DISPATCH == 'true' &&
+          vars.LINE_NOTIFICATION_SHADOW_MODE == 'false' &&
+          env.DRY_RUN != 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          LINE_DELIVERY_WORKER_SECRET: ${{ secrets.LINE_DELIVERY_WORKER_SECRET }}
+        run: python scripts/dispatch_line_notifications.py
+
       - name: Upload run data and reservation page snapshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
