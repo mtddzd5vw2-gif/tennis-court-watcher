@@ -346,6 +346,18 @@ def auth_page_loader(browser: Browser):
                 )
                 return
 
+            if (
+                parsed.scheme == "https"
+                and parsed.netloc == "access.line.me"
+                and parsed.path == "/oauth2/v2.1/authorize"
+            ):
+                route.fulfill(
+                    status=200,
+                    content_type="text/html",
+                    body="<!doctype html><title>LINE Login</title>",
+                )
+                return
+
             relative_path = parsed.path.removeprefix("/project/")
             if relative_path == "account/notifications.html":
                 route.fulfill(
