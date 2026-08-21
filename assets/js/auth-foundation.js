@@ -3,7 +3,9 @@
 
   const LOGIN_PATH = "../auth/login.html";
   const ACCOUNT_PATH = "../account/index.html";
+  const NOTIFICATIONS_PATH = "../account/notifications.html";
   const PENDING_TERMS_KEY = "tcw.pendingTermsAcceptance";
+  const PENDING_DESTINATION_KEY = "tcw.pendingAuthDestination";
   const LOGIN_SESSION_TIMEOUT_MS = 8000;
   const AUTHENTICATED_REDIRECT_DELAY_MS = 400;
 
@@ -84,6 +86,44 @@
     }
   }
 
+  function requestedAuthMode() {
+    const parameters = new URLSearchParams(window.location.search);
+    return parameters.get("mode") === "signup" ? "signup" : "login";
+  }
+
+  function requestedDestination() {
+    const parameters = new URLSearchParams(window.location.search);
+    return parameters.get("next") === "notifications"
+      ? NOTIFICATIONS_PATH
+      : ACCOUNT_PATH;
+  }
+
+  function rememberPendingDestination(destination) {
+    try {
+      if (destination === NOTIFICATIONS_PATH) {
+        window.sessionStorage.setItem(PENDING_DESTINATION_KEY, "notifications");
+      } else {
+        window.sessionStorage.removeItem(PENDING_DESTINATION_KEY);
+      }
+    } catch {
+      // Authentication can continue; account remains the safe fallback.
+    }
+  }
+
+  function consumePendingDestination() {
+    try {
+      const destination =
+        window.sessionStorage.getItem(PENDING_DESTINATION_KEY) ===
+        "notifications"
+          ? NOTIFICATIONS_PATH
+          : ACCOUNT_PATH;
+      window.sessionStorage.removeItem(PENDING_DESTINATION_KEY);
+      return destination;
+    } catch {
+      return ACCOUNT_PATH;
+    }
+  }
+
   function isMissingLoginAccount(error, requestMode) {
     return (
       requestMode === "login" &&
@@ -93,7 +133,7 @@
     );
   }
 
-  function enableLoginForm(client, config, form) {
+  function enableLoginForm(client, config, form, initialMode, destination) {
     const emailInput = form.elements.email;
     const consentInput = form.elements["terms-consent"];
     const submitButton = form.querySelector('button[type="submit"]');
@@ -189,6 +229,7 @@
           } else {
             clearPendingTermsAcceptance();
           }
+          rememberPendingDestination(destination);
           form.reset();
           setMode(requestMode);
           setStatus(
@@ -210,7 +251,7 @@
         });
     });
 
-    setMode("login");
+    setMode(initialMode);
     form.hidden = false;
   }
 
@@ -238,6 +279,8 @@
     if (!form || !sessionStatus) {
       return;
     }
+    const initialMode = requestedAuthMode();
+    const destination = requestedDestination();
 
     try {
       const result = await getLoginSession(client);
@@ -247,13 +290,15 @@
       if (result.data && result.data.session) {
         setStatus(
           sessionStatus,
-          "ログイン済みです。マイページへ移動します。",
+          destination === NOTIFICATIONS_PATH
+            ? "ログイン済みです。空き通知へ移動します。"
+            : "ログイン済みです。マイページへ移動します。",
           "success",
         );
         await new Promise((resolve) => {
           window.setTimeout(resolve, AUTHENTICATED_REDIRECT_DELAY_MS);
         });
-        window.location.replace(ACCOUNT_PATH);
+        window.location.replace(destination);
         return;
       }
       sessionStatus.hidden = true;
@@ -265,7 +310,7 @@
       );
     }
 
-    enableLoginForm(client, config, form);
+    enableLoginForm(client, config, form, initialMode, destination);
   }
 
   async function handleCallback(client) {
@@ -305,7 +350,7 @@
           // Keep the session and marker. The account page provides a retry path.
         }
       }
-      window.location.replace(ACCOUNT_PATH);
+      window.location.replace(consumePendingDestination());
     } catch {
       setStatus(
         status,
@@ -427,6 +472,7 @@
           throw new Error("terms_acceptance_failed");
         }
         clearPendingTermsAcceptance();
+        rememberPendingDestination(ACCOUNT_PATH);
         await loadAccountData();
         setStatus(status, "利用規約への同意を登録しました。", "success");
       } catch {
@@ -521,6 +567,7 @@
         }
 
         clearPendingTermsAcceptance();
+        rememberPendingDestination(ACCOUNT_PATH);
         email.textContent = "";
 
         try {

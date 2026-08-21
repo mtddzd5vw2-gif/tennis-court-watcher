@@ -542,8 +542,8 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.checkbox-grid--weekdays {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.checkbox-grid--days {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .check-option {
@@ -597,6 +597,71 @@ h3 {
 
 .check-option--enabled small {
   color: var(--muted);
+}
+
+.time-choice-group {
+  display: grid;
+  gap: 1rem;
+}
+
+.time-choice-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.time-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.time-choice {
+  position: relative;
+  display: grid;
+  min-height: 2.8rem;
+  cursor: pointer;
+}
+
+.time-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+.time-choice span {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.4rem;
+  background: var(--surface);
+  font-weight: 800;
+}
+
+.time-choice:hover span {
+  border-color: #98afa7;
+}
+
+.time-choice:has(input:focus-visible) span {
+  outline: 3px solid rgba(20, 122, 91, 0.2);
+  border-color: var(--accent);
+}
+
+.time-choice:has(input:checked) span {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: var(--success-bg);
+}
+
+.time-choice:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .form-errors {
@@ -733,9 +798,12 @@ h3 {
     width: 100%;
   }
 
-  .checkbox-grid--facilities,
-  .checkbox-grid--weekdays {
+  .checkbox-grid--facilities {
     grid-template-columns: 1fr;
+  }
+
+  .time-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .rule-details {

@@ -2,7 +2,7 @@
 
 ## 1. 目的と責務境界
 
-本書は、Phase 2で使用する地域・施設マスター、利用者ごとの通知条件を保存するデータモデル、通知条件UI、原子的保存RPC、空き候補との照合エンジンを定義する。テーブル・RLS・初期マスターは `supabase/migrations/20260807000000_create_notification_rules.sql`、原子的保存RPCは `supabase/migrations/20260807100000_add_notification_rule_save_rpc.sql`、照合処理専用の取得RPCは `supabase/migrations/20260807110000_add_notification_rule_matching_rpc.sql`、1利用者5件の上限は `supabase/migrations/20260807130000_limit_notification_rules_per_user.sql` に含める。
+本書は、Phase 2で使用する地域・施設マスター、利用者ごとの通知条件を保存するデータモデル、通知条件UI、原子的保存RPC、空き候補との照合エンジンを定義する。テーブル・RLS・初期マスターは `supabase/migrations/20260807000000_create_notification_rules.sql`、原子的保存RPCは `supabase/migrations/20260807100000_add_notification_rule_save_rpc.sql`、照合処理専用の取得RPCは `supabase/migrations/20260807110000_add_notification_rule_matching_rpc.sql`、1利用者5件の上限は `supabase/migrations/20260807130000_limit_notification_rules_per_user.sql` に含める。土曜・日曜・祝日と時間帯の選択は `supabase/migrations/20260821022637_add_configurable_notification_targets.sql` で追加する。
 
 Phase 2は完了である。通知条件の一覧・新規作成・編集・削除・一時停止・有効化UI、条件本体・施設・曜日を1トランザクションで保存する `save_notification_rule` RPC、有効な条件と空き候補を照合する純粋Pythonエンジン、1利用者5件の条件数上限を実装済みである。migrationの適用状況は環境ごとに確認する。
 
@@ -63,6 +63,7 @@ erDiagram
         uuid user_id FK
         text name
         boolean is_enabled
+        boolean include_holidays
         date date_from
         date date_to
         time start_time
@@ -137,11 +138,12 @@ erDiagram
 | `user_id` | 所有者である `auth.users.id` |
 | `name` | 利用者が識別する条件名。空白不可、80文字以内 |
 | `is_enabled` | 照合対象として有効か。初期値は `false` |
+| `include_holidays` | 日本の祝日を曜日とは独立して対象にするか |
 | `date_from` | 対象開始日。`null` は開始日の下限なし |
 | `date_to` | 対象終了日。`null` は終了日の上限なし |
 | `start_time` | 対象時間帯の開始 |
 | `end_time` | 対象時間帯の終了 |
-| `minimum_duration_minutes` | 必要な最低連続時間。30〜720分の30分単位 |
+| `minimum_duration_minutes` | 必要な最低連続時間。60〜300分の60分単位で、対象時間帯以下 |
 | `created_at` | DB登録時刻 |
 | `updated_at` | DB triggerで更新する最終更新時刻 |
 
@@ -171,19 +173,14 @@ erDiagram
 
 主キーは `(rule_id, weekday)` とする。施設関連と同様の複合外部キーにより所有者整合性を保証する。
 
-曜日はISO 8601に従う。
+曜日はISO 8601に従い、現行UIとDB制約では監視対象の土曜・日曜だけを許可する。
 
 | 値 | 曜日 |
 | --- | --- |
-| 1 | 月曜日 |
-| 2 | 火曜日 |
-| 3 | 水曜日 |
-| 4 | 木曜日 |
-| 5 | 金曜日 |
 | 6 | 土曜日 |
 | 7 | 日曜日 |
 
-DBのcheck制約で1〜7だけを許可する。
+日本の祝日は `notification_rules.include_holidays` で保持する。これにより平日の祝日を全平日選択で代用せず、通常の平日と祝日を区別する。
 
 ## 5. 施設IDと公開空きデータ
 
@@ -199,9 +196,9 @@ DBのcheck制約で1〜7だけを許可する。
 
 ## 6. 整合性と未完成条件
 
-DBは文字列、時間順序、日付範囲、最低連続時間、曜日、外部キー、所有者の整合性を保証する。一方、通知条件本体を作ってから子テーブルを登録できるよう、施設または曜日が0件の不完全な条件もDB上は保存可能とする。
+DBは文字列、8:00〜13:00内の1時間境界・最低2時間の時間帯、日付範囲、60分刻みかつ時間帯以下の最低連続時間、曜日、外部キー、所有者の整合性を保証する。一方、通知条件本体を作ってから子テーブルを登録できるよう、施設または通常曜日が0件の不完全な条件もDB上は保存可能とする。
 
-Phase 2のUIと `save_notification_rule` RPCは、保存完了前に施設1件以上、曜日1件以上を必須検証する。UIは停止中の条件を有効化する前にも、現在読み込んでいる施設・曜日がそれぞれ1件以上あることを確認する。照合エンジンでも、施設または曜日が0件の条件を `is_enabled` の値にかかわらず無効として扱う。
+Phase 2のUIと `save_notification_rule` RPCは、保存完了前に施設1件以上と、土曜・日曜・祝日のいずれか1件以上を必須検証する。UIは停止中の条件を有効化する前にも、現在読み込んでいる施設と対象日・時間帯が有効であることを確認する。照合エンジンでも、施設または対象日が0件の条件を `is_enabled` の値にかかわらず無効として扱う。
 
 通知条件は1利用者あたり最大5件とする。有効な条件と停止中の条件を区別せず、`notification_rules` に保存された全件を数える。0〜4件のときは新規追加でき、5件では新規追加を拒否する。5件ある状態でも既存条件の編集・有効化・一時停止・削除は可能であり、削除して4件以下になれば再び追加できる。
 
@@ -209,7 +206,7 @@ Phase 2のUIと `save_notification_rule` RPCは、保存完了前に施設1件�
 
 上限migrationは適用前に、既に6件以上の条件を持つ利用者がいないことを検査する。該当データがある場合は利用者IDやメールアドレスを出さずにmigrationを失敗させる。trigger関数の直接実行権限は `PUBLIC`、`anon`、`authenticated` から剥奪し、trigger経由の実行だけを維持する。
 
-通知条件UIは「登録済み n / 5件」を表示し、5件で「新しい通知条件」ボタンを無効化して削除案内を表示する。会員が入力するのは施設、任意の日付範囲、利用時間である。通知対象は土日・日本の祝日、8:00〜13:00に固定し、利用時間は60〜300分の60分刻み、初期値120分とする。新規フォームを開く時点と保存直前にも現在件数を確認するが、編集は上限判定の対象外とする。DBの並行作成競合で上限エラーになった場合は日本語の案内へ変換し、一覧を再取得して実際の件数、案内、ボタン状態を同期する。再取得に失敗した場合は追加操作を止め、ページ再読み込みを求める。DOM構築にはDOM APIと `textContent` を使用する。
+会員向け表示名は「空き通知」とする。UIは「登録済み n / 5件」を表示し、5件で「新しい空き通知」ボタンを無効化して削除案内を表示する。会員は施設、任意の日付範囲、土曜・日曜・祝日、時間帯、利用時間を入力する。時間帯は8:00〜13:00内の開始・終了を1時間境界で選び、最低2時間とする。利用時間は60〜300分の60分刻み、初期値120分で、選択時間帯を超える候補は無効化する。新規フォームを開く時点と保存直前にも現在件数を確認するが、編集は上限判定の対象外とする。DBの並行作成競合で上限エラーになった場合は日本語の案内へ変換し、一覧を再取得して実際の件数、案内、ボタン状態を同期する。再取得に失敗した場合は追加操作を止め、ページ再読み込みを求める。DOM構築にはDOM APIと `textContent` を使用する。
 
 ## 7. RLSと権限
 
@@ -228,27 +225,27 @@ active確認は既存 `profiles` の本人SELECT RLSを利用した単純な `ex
 
 `save_notification_rule` は `security invoker`、`set search_path = ''` のまま実行し、利用者ID引数を受け取らない。新規作成では `auth.uid()` を `user_id` に使用し、編集では条件IDと `auth.uid()` の両方に一致する本人所有行だけを更新する。本体・施設・曜日の全保存が成功した場合だけ条件IDを返し、途中の例外ではRPC呼び出し全体をロールバックする。実行権限は `PUBLIC` と `anon` から剥奪し、`authenticated` だけへ付与する。
 
-新規保存は `notification_rules` へのINSERTを通るため、`save_notification_rule` RPC経由の6件目も上限triggerが拒否する。既存条件の編集は `user_id` を変更しないUPDATEであるため、5件ある状態でも保存できる。RPCの署名、`security invoker`、RLSは変更しない。
+新規保存は `notification_rules` へのINSERTを通るため、`save_notification_rule` RPC経由の6件目も上限triggerが拒否する。既存条件の編集は `user_id` を変更しないUPDATEであるため、5件ある状態でも保存できる。対象日拡張ではRPC署名へ `p_include_holidays` を追加するため、PostgRESTがサポートしないoverloadを避けて旧関数をdropしてから同名関数を再作成する。`security invoker` とRLSは変更しない。
 
-`list_notification_rules_for_matching()` はGitHub Actionsなどの信頼されたサーバー処理専用である。`security invoker`、`stable`、`set search_path = ''` と完全修飾したオブジェクト名を使用し、既存RLS・policyを変更しない。active会員の有効かつ施設・曜日が各1件以上ある条件だけを返す。返却列は条件ID、利用者ID、日付範囲、開始・終了時刻、最低時間、施設ID配列、ISO曜日配列だけとし、メールアドレスは返さない。施設ID配列とISO曜日配列は重複排除してソートする。実行権限は `PUBLIC`、`anon`、`authenticated` から剥奪し、`service_role` だけへ付与するため、ブラウザのpublishable keyからは呼び出せない。
+`list_notification_rules_for_matching()` はGitHub Actionsなどの信頼されたサーバー処理専用である。`security invoker`、`stable`、`set search_path = ''` と完全修飾したオブジェクト名を使用し、既存RLS・policyを変更しない。active会員の有効かつ施設1件以上・対象日1件以上の条件だけを返す。返却列は条件ID、利用者ID、日付範囲、開始・終了時刻、最低時間、祝日選択、施設ID配列、ISO曜日配列だけとし、メールアドレスは返さない。施設ID配列とISO曜日配列は重複排除してソートする。通常曜日が0件でも祝日が選択されていれば返せるよう曜日関連はleft joinする。実行権限は `PUBLIC`、`anon`、`authenticated` から剥奪し、`service_role` だけへ付与するため、ブラウザのpublishable keyからは呼び出せない。
 
 このRPCは `security invoker` であるため、`service_role` のRLS bypassとは別に、内部で参照するテーブルの通常のSELECT権限を必要とする。`20260807120000_grant_notification_matching_rpc_dependencies.sql` は `public.profiles`、`public.notification_rules`、`public.notification_rule_facilities`、`public.notification_rule_weekdays` の4テーブルだけにSELECTを付与する。INSERT、UPDATE、DELETE等の書込み権限、他テーブル、`PUBLIC`、`anon`、`authenticated` への権限は追加しない。RPCは引き続き `security invoker` と既存RLSを維持する。
 
 ## 8. 空き候補との照合
 
-`scripts/match_notification_rules.py` は外部通信と分離した純粋関数を中心に構成する。通知条件は `rule_id`、`user_id`、`is_enabled`、任意の `date_from` / `date_to`、`start_time` / `end_time`、`minimum_duration_minutes`、`facility_ids`、ISO 8601の `weekdays` を正規化して評価する。
+`scripts/match_notification_rules.py` は外部通信と分離した純粋関数を中心に構成する。通知条件は `rule_id`、`user_id`、`is_enabled`、任意の `date_from` / `date_to`、`start_time` / `end_time`、`minimum_duration_minutes`、`include_holidays`、`facility_ids`、ISO 8601の `weekdays` を正規化して評価する。
 
 照合対象は、`availability.json` で日別entryの `status` が `success` かつ、枠の `status` が `available` のデータだけである。`error`、`selector_pending`、`fallback_from_previous` など正常取得でない日付に保持された過去データから、新しい一致候補を生成しない。
 
 条件は次をすべて満たした場合に一致する。
 
-- 条件が有効で、施設と曜日がそれぞれ1件以上ある。
-- 施設IDと、空き日付から求めたISO 8601曜日番号が一致する。
+- 条件が有効で、施設が1件以上、土曜・日曜・祝日のいずれかが1件以上ある。
+- 施設IDが一致し、空き日付のISO曜日が選択曜日に一致するか、祝日選択時に日別entryが日本の祝日である。
 - `date_from` がある場合はその日以降、`date_to` がある場合はその日以前である。境界日は含む。
 - 条件時間帯と空き時間帯が実際に重なる。
 - 重複部分の時間が `minimum_duration_minutes` 以上である。
 
-最低時間の判定には枠全体の `duration_minutes` ではなく、条件時間帯との重複時間を使う。例えば空きが08:30〜13:00、条件が09:00〜11:00、最低120分なら一致する。空きが10:00〜13:00で同じ条件・最低時間なら、重複は60分だけなので一致しない。祝日専用条件は設けず、月曜日の祝日は月曜日の条件だけに一致する。
+最低時間の判定には枠全体の `duration_minutes` ではなく、条件時間帯との重複時間を使う。例えば空きが08:30〜13:00、条件が09:00〜11:00、最低120分なら一致する。空きが10:00〜13:00で同じ条件・最低時間なら、重複は60分だけなので一致しない。祝日は曜日と独立したOR条件であり、平日の祝日は祝日選択だけで一致する。
 
 ## 9. 照合結果と重複排除
 
@@ -270,13 +267,13 @@ Actionsを有効化するにはRepository Variable `ENABLE_NOTIFICATION_MATCHING
 
 現在のスクレイパーは、今日を含む直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を生成する。
 
-会員向け通知条件はMonitoring Policyと同じ土日・日本の祝日、8:00〜13:00へ固定する。利用時間は60、120、180、240、300分から選択し、初期値は120分とする。保存時は開始08:00、終了13:00を使用する。祝日を実際の日付のISO曜日で判定する既存照合方式を維持するため、曜日値は1〜7をすべて登録する。通常の平日は取得対象ではないため通知候補にならない。
+会員向け空き通知はMonitoring Policyの範囲内で絞り込む。土曜・日曜・祝日を個別に選び、8:00〜13:00内の開始・終了を1時間境界・最低2時間で選択する。利用時間は60、120、180、240、300分から選択し、初期値は120分で、選択時間帯を超えない。通常の平日は取得対象ではないため通知候補にならない。
 
-DBの既存制約と `save_notification_rule` の署名は将来拡張との互換性のため変更しない。固定化前の曜日・時間帯またはUI非対応の最低連続時間を持つ条件は一覧で旧設定として表示し、編集・再保存時に現行の固定条件へ移行する。停止中の旧条件は再保存するまで有効化できない。
+対象日拡張migrationは、PR #55の固定方式で保存されたISO曜日1〜7・08:00〜13:00の条件だけを、土曜・日曜・祝日選択へ自動変換する。その他の対応外データがあれば個人識別子を出さずに停止し、運用者が事前に確認する。移行後の一覧に「以前の設定」という別表示は設けない。
 
 ## 12. migrationの適用とロールバック
 
-通知条件テーブルmigrationの後に、原子的保存RPC migration、照合処理専用RPC migration、service-role依存テーブルSELECT migration、1利用者5件の上限migrationの順で各1回だけ適用する。適用済みmigrationを編集・再実行せず、修正が必要な場合は新しいタイムスタンプのmigrationを追加する。
+通知条件テーブルmigrationの後に、原子的保存RPC migration、照合処理専用RPC migration、service-role依存テーブルSELECT migration、1利用者5件の上限migration、対象日・時間帯拡張migrationの順で各1回だけ適用する。適用済みmigrationを編集・再実行せず、修正が必要な場合は新しいタイムスタンプのmigrationを追加する。
 
 適用前に、対象Supabaseプロジェクトと環境、SQL全文、RLS、Grant、初期データ、利用者ごとの既存通知条件数をレビューする。上限migrationは6件以上を持つ利用者が存在すると匿名のエラーで停止する。空の検証環境では全migrationを時系列順に適用し、複数の架空ユーザーで本人・他人・inactive会員・anonの操作、5件時の編集、6件目の拒否、同一利用者の並行作成を実DB検証する。
 

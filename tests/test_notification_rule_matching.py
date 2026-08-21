@@ -14,7 +14,7 @@ import pytest
 from scripts import match_notification_rules as matching
 
 
-MONDAY = "2026-08-10"
+SATURDAY = "2026-08-08"
 
 
 def make_rule(**overrides: Any) -> dict[str, Any]:
@@ -27,8 +27,9 @@ def make_rule(**overrides: Any) -> dict[str, Any]:
         "start_time": "09:00:00",
         "end_time": "11:00:00",
         "minimum_duration_minutes": 60,
+        "include_holidays": False,
         "facility_ids": ["facility-a"],
-        "weekdays": [1],
+        "weekdays": [6],
     }
     rule.update(overrides)
     return rule
@@ -45,7 +46,7 @@ def make_slot(**overrides: Any) -> dict[str, Any]:
         "slot_id": "slot-a",
         "facility_id": "facility-a",
         "facility_name": "施設A",
-        "date": MONDAY,
+        "date": SATURDAY,
         "court_name": "Aコート",
         "start_time": "09:00",
         "end_time": "11:00",
@@ -60,7 +61,7 @@ def make_slot(**overrides: Any) -> dict[str, Any]:
 def make_availability(
     *slots: dict[str, Any],
     date_status: str = "success",
-    day_type: str = "weekday",
+    day_type: str = "weekend",
 ) -> dict[str, Any]:
     selected_slots = list(slots) or [make_slot()]
     return {
@@ -90,18 +91,18 @@ def test_facility_and_iso_weekday_must_match() -> None:
         [make_rule(facility_ids=["facility-b"])], availability
     )
     assert not matching.match_notification_rules(
-        [make_rule(weekdays=[2])], availability
+        [make_rule(weekdays=[7])], availability
     )
 
 
 @pytest.mark.parametrize(
     ("date_from", "date_to", "expected"),
     [
-        (MONDAY, MONDAY, True),
-        ("2026-08-09", MONDAY, True),
-        (MONDAY, "2026-08-11", True),
-        ("2026-08-11", None, False),
-        (None, "2026-08-09", False),
+        (SATURDAY, SATURDAY, True),
+        ("2026-08-07", SATURDAY, True),
+        (SATURDAY, "2026-08-09", True),
+        ("2026-08-09", None, False),
+        (None, "2026-08-07", False),
         (None, None, True),
     ],
 )
@@ -118,7 +119,7 @@ def test_date_range_is_optional_and_inclusive(
     assert bool(candidates) is expected
 
 
-@pytest.mark.parametrize("minimum_duration", [30, 60, 720])
+@pytest.mark.parametrize("minimum_duration", [60, 120])
 def test_minimum_duration_accepts_database_constraint_values(
     minimum_duration: int,
 ) -> None:
@@ -129,7 +130,7 @@ def test_minimum_duration_accepts_database_constraint_values(
     assert rule.minimum_duration_minutes == minimum_duration
 
 
-@pytest.mark.parametrize("minimum_duration", [1, 29, 31, 61, 721, True])
+@pytest.mark.parametrize("minimum_duration", [1, 30, 61, 180, 300, 360, True])
 def test_minimum_duration_rejects_values_outside_database_constraints(
     minimum_duration: int | bool,
 ) -> None:
@@ -145,9 +146,9 @@ def test_minimum_duration_rejects_values_outside_database_constraints(
         ("09:00", "11:00", "09:00", "11:00", 120, True),
         ("08:30", "13:00", "09:00", "11:00", 120, True),
         ("10:00", "13:00", "09:00", "11:00", 60, True),
-        ("10:00", "13:00", "09:00", "11:00", 90, False),
+        ("10:00", "13:00", "09:00", "12:00", 180, False),
         ("10:00", "13:00", "09:00", "11:00", 120, False),
-        ("11:00", "13:00", "09:00", "11:00", 30, False),
+        ("11:00", "13:00", "09:00", "11:00", 60, False),
     ],
 )
 def test_match_uses_actual_time_overlap(
@@ -227,23 +228,34 @@ def test_success_labeled_fallback_data_is_still_excluded() -> None:
     assert not matching.match_notification_rules([make_rule()], availability)
 
 
-def test_holiday_uses_the_dates_actual_iso_weekday() -> None:
-    availability = make_availability(make_slot(), day_type="holiday")
+def test_holiday_selection_is_independent_of_the_dates_iso_weekday() -> None:
+    holiday_date = "2026-08-10"
+    availability = make_availability(
+        make_slot(date=holiday_date),
+        day_type="holiday",
+    )
 
     assert matching.match_notification_rules(
-        [make_rule(weekdays=[1])],
+        [make_rule(weekdays=[], include_holidays=True)],
         availability,
     )
     assert not matching.match_notification_rules(
-        [make_rule(weekdays=[7])],
+        [make_rule(weekdays=[6], include_holidays=False)],
         availability,
+    )
+
+
+def test_holiday_only_rule_does_not_match_an_ordinary_weekend() -> None:
+    assert not matching.match_notification_rules(
+        [make_rule(weekdays=[], include_holidays=True)],
+        make_availability(make_slot(), day_type="weekend"),
     )
 
 
 def test_same_user_and_slot_is_deduplicated_and_matched_rules_are_sorted() -> None:
     rules = [
         make_rule(rule_id="rule-z", user_id="user-a"),
-        make_rule(rule_id="rule-a", user_id="user-a", start_time="09:30"),
+        make_rule(rule_id="rule-a", user_id="user-a", start_time="09:00"),
     ]
 
     candidates = matching.match_notification_rules(
@@ -258,9 +270,9 @@ def test_same_user_and_slot_is_deduplicated_and_matched_rules_are_sorted() -> No
     ]
     assert candidates[0]["matched_rules"][0] == {
         "rule_id": "rule-a",
-        "matched_start_time": "09:30",
+        "matched_start_time": "09:00",
         "matched_end_time": "11:00",
-        "matched_duration_minutes": 90,
+        "matched_duration_minutes": 120,
     }
 
 

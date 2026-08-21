@@ -22,7 +22,12 @@
       }
       h1 { margin: 0 0 8px; font-size: clamp(1.45rem, 6vw, 2rem); }
       header p { margin: 0; color: #dcebe1; line-height: 1.6; }
-      header .account-navigation { margin-top: 16px; }
+      header .account-navigation {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
       .account-navigation a {
         display: inline-flex;
         align-items: center;
@@ -157,6 +162,7 @@
       <p>直近15日間の土日祝、8:00〜13:00の空き候補を表示します。</p>
       <p class="account-navigation">
         <a href="account/index.html">マイページ</a>
+        <a href="auth/login.html?mode=signup&amp;next=notifications">空き通知</a>
       </p>
     </header>
     <main>

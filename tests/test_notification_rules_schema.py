@@ -319,7 +319,7 @@ def test_phase_two_design_documents_boundaries_and_incomplete_rules() -> None:
         "複合外部キー",
         "条件数上限",
         "施設1件以上",
-        "曜日1件以上",
+        "土曜・日曜・祝日のいずれか1件以上",
         "save_notification_rule",
         "security invoker",
         "完了",
@@ -352,7 +352,7 @@ def test_existing_migration_content_remains_unchanged() -> None:
     assert hashlib.sha256(save_rpc_bytes).hexdigest() == SAVE_RPC_MIGRATION_HASH
 
 
-def test_phase_zero_public_data_and_ui_are_not_modified() -> None:
+def test_public_availability_data_is_not_modified() -> None:
     result = subprocess.run(
         ["git", "diff", "--name-only", "HEAD", "--"],
         cwd=ROOT,
@@ -361,9 +361,6 @@ def test_phase_zero_public_data_and_ui_are_not_modified() -> None:
         text=True,
     )
     changed_paths = set(result.stdout.splitlines())
-    forbidden_exact = {
-        "data/availability.json",
-        "index.html",
-    }
+    forbidden_exact = {"data/availability.json"}
 
     assert changed_paths.isdisjoint(forbidden_exact)

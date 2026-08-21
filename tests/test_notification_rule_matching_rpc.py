@@ -7,7 +7,7 @@ from pathlib import Path
 MIGRATION_PATH = (
     Path(__file__).parents[1]
     / "supabase/migrations"
-    / "20260807110000_add_notification_rule_matching_rpc.sql"
+    / "20260821022637_add_configurable_notification_targets.sql"
 )
 
 
@@ -38,6 +38,7 @@ def test_matching_rpc_has_the_private_normalized_result_shape() -> None:
         "start_time time without time zone",
         "end_time time without time zone",
         "minimum_duration_minutes smallint",
+        "include_holidays boolean",
         "facility_ids text[]",
         "weekdays smallint[]",
     ):
@@ -77,6 +78,8 @@ def test_matching_rpc_only_returns_complete_enabled_active_member_rules() -> Non
         in sql
     )
     assert "pg_catalog.count(distinct selected_weekday.weekday) >= 1" in sql
+    assert "or rule.include_holidays = true" in sql
+    assert "left join public.notification_rule_weekdays" in sql
 
 
 def test_matching_rpc_arrays_and_rows_have_deterministic_order() -> None:
@@ -88,14 +91,18 @@ def test_matching_rpc_arrays_and_rows_have_deterministic_order() -> None:
     ) in sql
     assert (
         "pg_catalog.array_agg( distinct selected_weekday.weekday "
-        "order by selected_weekday.weekday ) as weekdays"
+        "order by selected_weekday.weekday ) filter "
+        "(where selected_weekday.weekday is not null)"
     ) in sql
     assert "order by rule.user_id, rule.id;" in sql
 
 
 def test_matching_rpc_execute_permission_is_service_role_only() -> None:
     sql = compact(migration_sql())
-    grants = re.findall(r"\bgrant execute\b.*?;", sql)
+    matching_section = sql[
+        sql.index("drop function public.list_notification_rules_for_matching()"):
+    ]
+    grants = re.findall(r"\bgrant execute\b.*?;", matching_section)
 
     assert grants == [
         "grant execute on function "

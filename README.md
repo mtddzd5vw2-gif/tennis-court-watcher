@@ -38,8 +38,8 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 - Supabase Authのメールマジックリンク送信、PKCE callback、セッション確認、ログアウト
 - 認証用画面（ログイン・会員登録、認証callback、マイページ、利用規約、プライバシーポリシー）
 - active会員向け通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI
-- 会員向け通知対象を土日・日本の祝日、8:00〜13:00に固定し、利用時間を60分刻み（初期値120分）で選ぶUI
-- 通知条件本体・施設・曜日を原子的に保存する `save_notification_rule` RPC
+- 会員向け空き通知で土曜・日曜・日本の祝日を個別選択し、8:00〜13:00内の時間帯と利用時間を選ぶUI
+- 通知条件本体・施設・曜日・祝日選択を原子的に保存する `save_notification_rule` RPC
 - 有効・停止中を含めて1利用者最大5件とするDB triggerと、件数表示・追加制御UI
 - 正常取得日の空き枠と有効な通知条件を、実際の重複時間で判定する純粋Python照合エンジン
 - active会員の有効な条件だけを返すservice-role専用 `list_notification_rules_for_matching` RPC
@@ -72,19 +72,19 @@ PKCEのcode verifierはリンクを要求したブラウザ側に保存される
 - `auth/login.html`: マジックリンクによるログイン・会員登録画面
 - `auth/callback.html`: メール認証callback画面
 - `account/index.html`: 最小限のマイページ
-- `account/notifications.html`: 通知条件の一覧・作成・編集・停止・有効化・削除画面
+- `account/notifications.html`: 空き通知の一覧・作成・編集・停止・有効化・削除画面
 - `legal/terms.html`: 利用規約の暫定案
 - `legal/privacy.html`: プライバシーポリシーの暫定案
 
 法務ページは暫定案であり、会員登録の一般公開前に運営者表示、問い合わせ窓口、版番号、発効日、保持・削除方針などの内容確認が必要です。詳細と未決事項は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
 
-Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限します。DB triggerが最終的な強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4の利用者別LINE通知は将来機能です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
+Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限し、`20260821022637_add_configurable_notification_targets.sql` は祝日選択と監視範囲内の時間帯選択を追加します。DB triggerが最終的な件数強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4の利用者別LINE通知は将来機能です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 
-照合対象は、日別取得結果が `success` で、枠の `status` が `available` のデータだけです。施設、ISO 8601曜日、任意の日付範囲を確認し、通知条件時間帯と空き時間帯の実際の重複分数が最低連続時間以上なら一致します。同じ利用者の複数条件が同じ `slot_id` へ一致しても利用者・枠の候補は1件にまとめ、別利用者は別候補にします。
+照合対象は、日別取得結果が `success` で、枠の `status` が `available` のデータだけです。施設、選択した土曜・日曜または祝日、任意の日付範囲を確認し、通知時間帯と空き時間帯の実際の重複分数が最低連続時間以上なら一致します。同じ利用者の複数条件が同じ `slot_id` へ一致しても利用者・枠の候補は1件にまとめ、別利用者は別候補にします。
 
-現在のMonitoring Policyでは、直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を取得します。会員向け通知条件も同じ曜日・時間帯へ固定し、利用時間は60、120、180、240、300分から選択します。初期値は120分です。祝日を実際の日付のISO曜日で照合するため、保存時の曜日値は1〜7をすべて使用しますが、通常の平日は取得対象ではないため通知候補になりません。
+現在のMonitoring Policyでは、直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を取得します。会員向け空き通知では、土曜・日曜・祝日を個別に選び、同じ8:00〜13:00内を1時間境界・最低2時間の範囲で指定します。利用時間は60、120、180、240、300分から選択し、初期値は120分です。選択した利用時間は通知時間帯に収まる必要があります。祝日は曜日とは独立して保存し、空き日が選択曜日または日本の祝日のどちらかに一致すれば日条件を満たします。通常の平日は取得対象ではないため、祝日でない平日が通知候補になることはありません。
 
-固定化前に保存された曜日・時間帯を持つ条件は、利用者の意図を推測して自動変更しません。一覧に旧設定と移行案内を表示し、編集・再保存した時点で現行の固定条件へ更新します。停止中の旧条件は、再保存するまで有効化できません。
+`20260821022637_add_configurable_notification_targets.sql` は、PR #55の固定条件を表すISO曜日1〜7・08:00〜13:00の既存データだけを、土曜・日曜・祝日を選択した新モデルへ変換します。移行後の画面は保存値をそのまま表示し、「以前の設定」という別表示は行いません。
 
 ## ファイル構成
 
@@ -280,8 +280,9 @@ $env:AUTH_CALLBACK_URL = "http://localhost:8765/auth/callback.html"
 5. `supabase/migrations/20260807110000_add_notification_rule_matching_rpc.sql`
 6. `supabase/migrations/20260807120000_grant_notification_matching_rpc_dependencies.sql`
 7. `supabase/migrations/20260807130000_limit_notification_rules_per_user.sql`
+8. `supabase/migrations/20260821022637_add_configurable_notification_targets.sql`
 
-適用済みmigrationを再実行・編集しないでください。対象環境のmigration履歴を確認し、未適用分だけを上記の順でそれぞれ1回適用します。適用前にSQL、RLS、Grant、初期データをレビューし、検証環境で実DBテストを行ってください。第7migrationは既に6件以上の通知条件を持つ利用者がいると、利用者IDやメールアドレスを表示せずに失敗します。適用前に利用者ごとの件数を確認してください。
+適用済みmigrationを再実行・編集しないでください。対象環境のmigration履歴を確認し、未適用分だけを上記の順でそれぞれ1回適用します。適用前にSQL、RLS、Grant、初期データをレビューし、検証環境で実DBテストを行ってください。第7migrationは既に6件以上の通知条件を持つ利用者がいると、利用者IDやメールアドレスを表示せずに失敗します。第8migrationは対応外の旧曜日・時間値が残っている環境では匿名エラーで停止します。適用前に利用者ごとの件数と条件値を個人情報を出さずに確認してください。
 
 `list_notification_rules_for_matching()` は `security invoker` のため、呼び出し元の `service_role` にも参照先テーブルの通常のSELECT権限が必要です。RLS bypassはテーブルGRANTの代わりにはなりません。第6migrationは `profiles`、`notification_rules`、`notification_rule_facilities`、`notification_rule_weekdays` の4テーブルに限ってSELECTだけを付与し、書込み権限やブラウザロールの権限は追加しません。
 

@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 ROOT = Path(__file__).parents[1]
 PAGE_PATH = ROOT / "account/notifications.html"
 ACCOUNT_PATH = ROOT / "account/index.html"
+INDEX_PATH = ROOT / "index.html"
 SCRIPT_PATH = ROOT / "assets/js/notification-rules.js"
 CSS_PATH = ROOT / "assets/css/auth.css"
 DESIGN_PATH = ROOT / "docs/PHASE2_NOTIFICATION_RULES_DESIGN.md"
@@ -18,7 +19,7 @@ README_PATH = ROOT / "README.md"
 MIGRATION_PATH = (
     ROOT
     / "supabase/migrations"
-    / "20260807100000_add_notification_rule_save_rpc.sql"
+    / "20260821022637_add_configurable_notification_targets.sql"
 )
 SUPABASE_JS_URL = (
     "https://cdn.jsdelivr.net/npm/"
@@ -78,14 +79,41 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
     assert facility_fieldset.find("legend").get_text(strip=True) == "施設"
     assert facility_fieldset.find(attrs={"data-facility-options": True})
 
-    assert not form.find(attrs={"data-weekday-fieldset": True})
-    assert not form.find(attrs={"data-rule-weekday": True})
-    fixed_policy = form.find(attrs={"data-fixed-notification-policy": True})
-    assert fixed_policy
-    assert fixed_policy["aria-label"] == "通知対象"
-    assert fixed_policy.get_text(" ", strip=True) == (
-        "通知対象 土日・祝日、8:00〜13:00"
+    day_fieldset = form.find("fieldset", attrs={"data-day-fieldset": True})
+    assert day_fieldset.find("legend").get_text(strip=True) == "通知する日"
+    weekday_inputs = day_fieldset.find_all(
+        "input", attrs={"data-rule-weekday": True}
     )
+    assert [input_["value"] for input_ in weekday_inputs] == ["6", "7"]
+    assert all(input_.has_attr("checked") for input_ in weekday_inputs)
+    holiday = day_fieldset.find("input", attrs={"data-rule-holiday": True})
+    assert holiday["name"] == "include_holidays"
+    assert holiday.has_attr("checked")
+
+    time_fieldset = form.find("fieldset", attrs={"data-time-fieldset": True})
+    assert time_fieldset.find("legend").get_text(strip=True) == (
+        "通知する時間帯"
+    )
+    start_times = time_fieldset.find_all(
+        "input", attrs={"data-rule-start-time": True}
+    )
+    end_times = time_fieldset.find_all(
+        "input", attrs={"data-rule-end-time": True}
+    )
+    assert [input_["value"] for input_ in start_times] == [
+        "08:00",
+        "09:00",
+        "10:00",
+        "11:00",
+    ]
+    assert [input_["value"] for input_ in end_times] == [
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+    ]
+    assert [input_["value"] for input_ in start_times if input_.has_attr("checked")] == ["08:00"]
+    assert [input_["value"] for input_ in end_times if input_.has_attr("checked")] == ["13:00"]
 
     assert form.find("input", attrs={"data-rule-date-from": True})["type"] == (
         "date"
@@ -96,8 +124,6 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
     duration = form.find(
         "select", attrs={"data-rule-minimum-duration": True}
     )
-    assert not form.find(attrs={"data-rule-start-time": True})
-    assert not form.find(attrs={"data-rule-end-time": True})
     options = duration.find_all("option")
     assert [option["value"] for option in options] == [
         "60",
@@ -123,6 +149,8 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
     assert ".field select" in css
     assert ".field select:focus" in css
     assert '.field select[aria-invalid="true"]' in css
+    assert ".time-choice-grid" in css
+    assert ".time-choice:has(input:checked)" in css
 
 
 def test_notification_page_has_rule_count_and_limit_guidance() -> None:
@@ -140,10 +168,10 @@ def test_notification_page_has_rule_count_and_limit_guidance() -> None:
     assert limit_guidance.has_attr("hidden")
     assert limit_guidance["aria-live"] == "polite"
     assert limit_guidance.get_text(" ", strip=True) == (
-        "通知条件は最大5件まで登録できます。"
-        "追加するには既存の条件を削除してください。"
+        "空き通知は最大5件まで登録できます。"
+        "追加するには既存の設定を削除してください。"
     )
-    assert new_rule_button.get_text(" ", strip=True) == "新しい通知条件"
+    assert new_rule_button.get_text(" ", strip=True) == "新しい空き通知"
 
 
 def test_account_and_notification_pages_link_to_each_other_and_availability() -> None:
@@ -152,9 +180,21 @@ def test_account_and_notification_pages_link_to_each_other_and_availability() ->
 
     account_links = account.find_all("a", href="notifications.html")
     assert account_links
-    assert any("通知条件" in link.get_text(strip=True) for link in account_links)
+    assert any("空き通知" in link.get_text(strip=True) for link in account_links)
     assert notifications.find("a", href="index.html")
     assert notifications.find("a", href="../index.html")
+
+
+def test_availability_header_offers_signup_first_availability_alert_route() -> None:
+    index = BeautifulSoup(read(INDEX_PATH), "html.parser")
+    navigation = index.find(class_="account-navigation")
+
+    assert navigation.find("a", href="account/index.html").get_text(
+        strip=True
+    ) == "マイページ"
+    assert navigation.find(
+        "a", href="auth/login.html?mode=signup&next=notifications"
+    ).get_text(strip=True) == "空き通知"
 
 
 def test_notification_page_explains_the_current_acquisition_scope() -> None:
@@ -187,7 +227,7 @@ def test_notification_page_explains_the_current_acquisition_scope() -> None:
         assert removed not in text
 
     assert not guidance.find("details")
-    assert not notifications.find("input", attrs={"name": "holiday"})
+    assert notifications.find("input", attrs={"data-rule-holiday": True})
 
 
 def test_notification_script_uses_existing_auth_contract_and_session_identity() -> None:
@@ -204,9 +244,9 @@ def test_notification_script_uses_existing_auth_contract_and_session_identity() 
     assert '.select("membership_status")' in script
     assert 'membership_status !== "active"' in script
     assert "membershipRequired.hidden = false" in script
-    assert "URLSearchParams" not in script
-    assert 'const FIXED_NOTIFICATION_START_TIME = "08:00";' in script
-    assert 'const FIXED_NOTIFICATION_END_TIME = "13:00";' in script
+    assert 'const LOGIN_PATH = "../auth/login.html?next=notifications";' in script
+    assert "const MONITORING_START_MINUTES = 8 * 60;" in script
+    assert "const MONITORING_END_MINUTES = 13 * 60;" in script
 
     for table in (
         "notification_rules",
@@ -240,8 +280,10 @@ def test_notification_script_validates_every_form_rule_in_japanese() -> None:
         "条件名を入力してください。",
         "条件名は80文字以内で入力してください。",
         "施設を1件以上選択してください。",
+        "土曜・日曜・祝日から1つ以上選択してください。",
+        "時間帯は8:00〜13:00の中から2時間以上で選択してください。",
         "開始日は終了日以前の日付にしてください。",
-        "利用時間は1〜5時間の範囲で、1時間単位で選択してください。",
+        "利用時間は選択した時間帯に収まる範囲で選択してください。",
     ):
         assert message in script
 
@@ -253,7 +295,7 @@ def test_notification_script_validates_every_form_rule_in_japanese() -> None:
     assert "minimumDuration % 30 !== 0" not in script
 
 
-def test_notification_script_saves_the_fixed_monitoring_policy() -> None:
+def test_notification_script_saves_member_selected_days_and_time_range() -> None:
     script = read(SCRIPT_PATH)
     validation = script_section(
         script,
@@ -261,23 +303,21 @@ def test_notification_script_saves_the_fixed_monitoring_policy() -> None:
         "function normalizeTimeInput",
     )
 
-    assert "const FIXED_NOTIFICATION_WEEKDAYS = Object.freeze([" in script
-    assert "1, 2, 3, 4, 5, 6, 7," in script
-    assert "weekday holiday remains eligible" in script
-    assert "p_start_time: FIXED_NOTIFICATION_START_TIME" in validation
-    assert "p_end_time: FIXED_NOTIFICATION_END_TIME" in validation
-    assert "p_weekdays: [...FIXED_NOTIFICATION_WEEKDAYS]" in validation
-    assert "dateRangeContainsSelectedWeekday" not in script
-    assert "data-rule-weekday" not in script
-    assert "data-rule-start-time" not in script
-    assert "data-rule-end-time" not in script
+    assert "selectedWeekdayValues" in validation
+    assert "includeHolidays" in validation
+    assert "p_include_holidays: includeHolidays" in validation
+    assert "p_start_time: start" in validation
+    assert "p_end_time: end" in validation
+    assert "p_weekdays: selectedWeekdayValues" in validation
+    assert "isSupportedTimeRange(start, end)" in validation
+    assert "minimumDuration > windowMinutes" in validation
 
 
-def test_notification_script_marks_legacy_rules_until_they_are_resaved() -> None:
+def test_notification_script_renders_current_rule_values_without_legacy_wording() -> None:
     script = read(SCRIPT_PATH)
     policy_check = script_section(
         script,
-        "function usesFixedNotificationPolicy",
+        "function usesSupportedNotificationPolicy",
         "function createRuleAction",
     )
     rendering = script_section(
@@ -286,16 +326,12 @@ def test_notification_script_marks_legacy_rules_until_they_are_resaved() -> None
         "function renderFacilityOptions",
     )
 
-    assert "FIXED_NOTIFICATION_START_TIME" in policy_check
-    assert "FIXED_NOTIFICATION_END_TIME" in policy_check
-    assert "FIXED_NOTIFICATION_WEEKDAYS.every(" in policy_check
+    assert "SUPPORTED_WEEKDAYS.has" in policy_check
+    assert "isSupportedTimeRange" in policy_check
     assert "ALLOWED_MINIMUM_DURATIONS.has" in policy_check
-    assert "以前の曜日設定" in rendering
-    assert "以前の時間設定" in rendering
-    assert (
-        "この条件は以前の設定です。編集して保存すると、"
-        "現在の通知対象に更新されます。"
-    ) in rendering
+    assert '"通知する日"' in rendering
+    assert '"時間帯"' in rendering
+    assert "以前の設定" not in script
 
 def test_notification_script_uses_atomic_rpc_and_scoped_direct_mutations() -> None:
     script = read(SCRIPT_PATH)
@@ -305,6 +341,7 @@ def test_notification_script_uses_atomic_rpc_and_scoped_direct_mutations() -> No
         "p_rule_id",
         "p_name",
         "p_is_enabled",
+        "p_include_holidays",
         "p_date_from",
         "p_date_to",
         "p_start_time",
@@ -392,8 +429,8 @@ def test_limit_error_is_translated_and_refreshes_the_actual_rule_count() -> None
         "async function start",
     )
     japanese_message = (
-        "通知条件は最大5件まで登録できます。"
-        "追加するには既存の条件を削除してください。"
+        "空き通知は最大5件まで登録できます。"
+        "追加するには既存の設定を削除してください。"
     )
 
     assert japanese_message in script
@@ -433,7 +470,7 @@ def test_delete_refresh_reenables_creation_when_rule_count_drops() -> None:
         "function renderFacilityOptions",
     )
 
-    assert 'await refreshNotificationDataAfterMutation("通知条件を削除しました。")' in (
+    assert 'await refreshNotificationDataAfterMutation("空き通知を削除しました。")' in (
         delete
     )
     assert "renderRules();" in script_section(
@@ -477,18 +514,18 @@ def test_mutation_failure_and_post_success_refresh_failure_are_distinct() -> Non
     assert "ページを再読み込みしてください。" in refresh_helper
     assert "操作を繰り返さないでください。" in refresh_helper
     assert "refreshFailed = true" in refresh_helper
-    assert "通知条件を保存できませんでした" not in refresh_helper
-    assert "通知条件の状態を変更できませんでした" not in refresh_helper
-    assert "通知条件を削除できませんでした" not in refresh_helper
+    assert "空き通知を保存できませんでした" not in refresh_helper
+    assert "空き通知の状態を変更できませんでした" not in refresh_helper
+    assert "空き通知を削除できませんでした" not in refresh_helper
 
     for operation in operations.values():
         assert "await loadNotificationData()" not in operation
         assert "await refreshNotificationDataAfterMutation(" in operation
 
-    assert "通知条件の状態を変更できませんでした" in operations["toggle"]
-    assert "通知条件を削除できませんでした" in operations["delete"]
-    assert "通知条件を保存できませんでした" in operations["save"]
-    assert operations["save"].index("通知条件を保存できませんでした") < (
+    assert "空き通知の状態を変更できませんでした" in operations["toggle"]
+    assert "空き通知を削除できませんでした" in operations["delete"]
+    assert "空き通知を保存できませんでした" in operations["save"]
+    assert operations["save"].index("空き通知を保存できませんでした") < (
         operations["save"].rindex("await refreshNotificationDataAfterMutation(")
     )
     assert operations["save"].index("formPanel.hidden = true") < (
@@ -513,13 +550,13 @@ def test_incomplete_rules_cannot_be_enabled_but_can_still_be_paused() -> None:
 
     assert "ruleFacilities.some(" in completeness_check
     assert "rules.find(" in completeness_check
-    assert "usesFixedNotificationPolicy(rule)" in completeness_check
+    assert "usesSupportedNotificationPolicy(rule)" in completeness_check
     assert (
-        "return hasFacility && rule && usesFixedNotificationPolicy(rule);"
+        "return hasFacility && rule && usesSupportedNotificationPolicy(rule);"
         in completeness_check
     )
     assert guard in toggle
-    assert "現在の通知対象に合った条件だけを有効化できます。" in toggle
+    assert "施設・日・時間帯が正しく登録された空き通知だけを有効化できます。" in toggle
     assert toggle.index(guard) < toggle.index('.update({ is_enabled: !rule.is_enabled })')
     guarded_section = toggle[
         toggle.index(guard):toggle.index('.update({ is_enabled: !rule.is_enabled })')
@@ -598,13 +635,18 @@ def test_save_rpc_validates_and_deduplicates_facilities_and_weekdays() -> None:
     sql = compact(read(MIGRATION_PATH).lower())
 
     assert "cardinality(p_facility_ids) < 1" in sql
-    assert "cardinality(p_weekdays) < 1" in sql
+    assert "p_include_holidays boolean" in sql
+    assert "p_weekdays is null" in sql
+    assert "cardinality(v_weekdays) < 1 and not p_include_holidays" in sql
     assert "facility.id = any (v_facility_ids)" in sql
     assert "facility.is_active = true" in sql
-    assert "weekday_input.weekday < 1" in sql
-    assert "weekday_input.weekday > 7" in sql
+    assert "weekday_input.weekday not in (6, 7)" in sql
     assert "array_agg( distinct facility_input.facility_id" in sql
     assert "array_agg( distinct weekday_input.weekday" in sql
+    assert "p_start_time < '08:00'::time" in sql
+    assert "p_end_time > '13:00'::time" in sql
+    assert "p_end_time - p_start_time < interval '2 hours'" in sql
+    assert "p_minimum_duration_minutes % 60 <> 0" in sql
 
     for table in (
         "public.notification_rules",
@@ -621,7 +663,10 @@ def test_save_rpc_validates_and_deduplicates_facilities_and_weekdays() -> None:
 
 def test_save_rpc_execute_permission_is_authenticated_only() -> None:
     sql = compact(read(MIGRATION_PATH).lower())
-    grants = re.findall(r"\bgrant\s+execute\b.*?;", sql)
+    save_section = sql[: sql.index(
+        "drop function public.list_notification_rules_for_matching()"
+    )]
+    grants = re.findall(r"\bgrant\s+execute\b.*?;", save_section)
 
     assert len(grants) == 1
     assert grants[0].endswith("to authenticated;")
