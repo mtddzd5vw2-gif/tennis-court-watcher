@@ -191,24 +191,27 @@ def test_top_page_has_static_account_link_without_auth_dependencies() -> None:
     assert all("auth-config" not in source.lower() for source in script_sources)
 
 
-def test_top_page_has_responsive_municipal_court_hero() -> None:
+def test_top_page_uses_municipal_court_image_as_header_watermark() -> None:
     soup = BeautifulSoup(INDEX_HTML, "html.parser")
-    hero = soup.find("figure", class_="court-hero")
-    image = hero.find("img")
-    asset = ROOT / image["src"]
+    preload = soup.find(
+        "link",
+        rel="preload",
+        href="assets/images/kagoshima-municipal-tennis-court.webp",
+    )
+    styles = soup.find("style").get_text()
+    asset = ROOT / preload["href"]
 
-    assert hero.find(class_="court-hero__place").get_text(strip=True) == (
-        "鹿児島市営テニスコート"
+    assert soup.find("figure", class_="court-hero") is None
+    assert preload["as"] == "image"
+    assert preload["type"] == "image/webp"
+    assert "header::before" in styles
+    assert (
+        'background-image: url("assets/images/'
+        'kagoshima-municipal-tennis-court.webp")' in styles
     )
-    assert hero.find(class_="court-hero__message").get_text(strip=True) == (
-        "空きを見つけて、コートへ出よう。"
-    )
-    assert image["alt"] == (
-        "青空の下、鹿児島市営テニスコートでテニスを楽しむ人たち"
-    )
-    assert (image["width"], image["height"]) == ("1200", "900")
-    assert image["decoding"] == "async"
-    assert image["fetchpriority"] == "high"
+    assert "opacity: .26" in styles
+    assert "header > * { position: relative; z-index: 1; }" in styles
+    assert "rgb(18 55 42 / 96%)" in styles
     assert asset.is_file()
     assert asset.stat().st_size <= 100_000
 

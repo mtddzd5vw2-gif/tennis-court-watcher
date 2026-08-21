@@ -4,6 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#12372a">
+    <link
+      rel="preload"
+      href="assets/images/kagoshima-municipal-tennis-court.webp"
+      as="image"
+      type="image/webp"
+    >
     <title>鹿児島テニス空き情報</title>
     <style>
       :root {
@@ -16,10 +22,36 @@
       * { box-sizing: border-box; }
       body { margin: 0; overflow-x: hidden; }
       header {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
         padding: 28px 20px 22px;
         color: white;
-        background: linear-gradient(135deg, #12372a, #2e6a48);
+        background: #12372a;
       }
+      header::before,
+      header::after {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        content: "";
+        pointer-events: none;
+      }
+      header::before {
+        background-image: url("assets/images/kagoshima-municipal-tennis-court.webp");
+        background-position: center 56%;
+        background-size: cover;
+        opacity: .26;
+      }
+      header::after {
+        background: linear-gradient(
+          90deg,
+          rgb(18 55 42 / 96%) 0%,
+          rgb(18 55 42 / 88%) 48%,
+          rgb(18 55 42 / 58%) 100%
+        );
+      }
+      header > * { position: relative; z-index: 1; }
       h1 { margin: 0 0 8px; font-size: clamp(1.45rem, 6vw, 2rem); }
       header p { margin: 0; color: #dcebe1; line-height: 1.6; }
       header .account-navigation {
@@ -42,56 +74,6 @@
       }
       .account-navigation a:hover { background: #e8f3eb; }
       main { width: min(calc(100% - 28px), 720px); margin: 20px auto 44px; }
-      .court-hero {
-        position: relative;
-        min-width: 0;
-        margin: 0 0 18px;
-        overflow: hidden;
-        border: 1px solid rgb(18 55 42 / 12%);
-        border-radius: 22px;
-        background: #dce8db;
-        box-shadow: 0 12px 30px rgb(18 55 42 / 12%);
-        aspect-ratio: 16 / 10;
-      }
-      .court-hero::after {
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(
-          180deg,
-          rgb(10 32 23 / 0%) 42%,
-          rgb(10 32 23 / 76%) 100%
-        );
-        content: "";
-        pointer-events: none;
-      }
-      .court-hero img {
-        display: block;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center 52%;
-      }
-      .court-hero figcaption {
-        position: absolute;
-        z-index: 1;
-        right: 18px;
-        bottom: 18px;
-        left: 18px;
-        color: white;
-        text-shadow: 0 2px 12px rgb(0 0 0 / 38%);
-      }
-      .court-hero__place {
-        display: block;
-        margin-bottom: 4px;
-        font-size: .75rem;
-        font-weight: 700;
-        letter-spacing: .08em;
-      }
-      .court-hero__message {
-        display: block;
-        font-size: clamp(1.1rem, 4.8vw, 1.55rem);
-        line-height: 1.35;
-      }
       .summary, .facility, .notice {
         min-width: 0;
         margin-bottom: 16px;
@@ -216,20 +198,6 @@
       </p>
     </header>
     <main>
-      <figure class="court-hero" aria-label="鹿児島市営テニスコートの風景">
-        <img
-          src="assets/images/kagoshima-municipal-tennis-court.webp"
-          alt="青空の下、鹿児島市営テニスコートでテニスを楽しむ人たち"
-          width="1200"
-          height="900"
-          decoding="async"
-          fetchpriority="high"
-        >
-        <figcaption>
-          <span class="court-hero__place">鹿児島市営テニスコート</span>
-          <strong class="court-hero__message">空きを見つけて、コートへ出よう。</strong>
-        </figcaption>
-      </figure>
       <section class="summary">
         <span class="label">最終更新</span>
         <strong id="updated">読み込み中…</strong>
