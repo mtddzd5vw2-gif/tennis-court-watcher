@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,12 +24,14 @@ RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails"
 REPORT_FROM = "Tennis Court Watcher <no-reply@email.tenniscourtwatcher.com>"
 REQUEST_TIMEOUT_SECONDS = 20
 MAX_RESPONSE_BYTES = 64 * 1024
+HTTP_USER_AGENT = "tennis-court-watcher-line-usage/1.0"
 JST = ZoneInfo("Asia/Tokyo")
 EMAIL_PATTERN = re.compile(
     r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
     r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
 )
+PROVIDER_ERROR_CODE_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class LineUsageReportError(RuntimeError):
@@ -77,6 +80,49 @@ def _positive_timeout(value: int | float) -> None:
         raise LineUsageReportError("request timeout must be positive")
 
 
+def _single_line_secret(value: str, name: str) -> str:
+    if not isinstance(value, str):
+        raise LineUsageReportError(f"{name} is required")
+    normalized = value.strip()
+    if not normalized or "\r" in normalized or "\n" in normalized:
+        raise LineUsageReportError(f"{name} is required")
+    return normalized
+
+
+def _http_error_summary(operation: str, error: urllib.error.HTTPError) -> str:
+    status = error.code if isinstance(error.code, int) else "unknown"
+    provider_code = "unknown"
+    content_type = ""
+    headers = getattr(error, "headers", None)
+    if headers is not None:
+        raw_content_type = headers.get("Content-Type", "")
+        if isinstance(raw_content_type, str):
+            content_type = raw_content_type.lower()
+    if content_type and "application/json" not in content_type:
+        provider_code = "non_json_response"
+    try:
+        response_body = error.read(MAX_RESPONSE_BYTES + 1)
+        if (
+            isinstance(response_body, bytes)
+            and len(response_body) <= MAX_RESPONSE_BYTES
+        ):
+            value = json.loads(response_body.decode("utf-8"))
+            if isinstance(value, Mapping):
+                candidate = value.get("name", value.get("code"))
+                if isinstance(candidate, str) and PROVIDER_ERROR_CODE_PATTERN.fullmatch(
+                    candidate
+                ):
+                    provider_code = candidate
+    except Exception:
+        pass
+    finally:
+        try:
+            error.close()
+        except Exception:
+            pass
+    return f"{operation} request failed (status={status}, code={provider_code})"
+
+
 def _read_json_response(
     request: urllib.request.Request,
     *,
@@ -95,6 +141,8 @@ def _read_json_response(
         response_body = response.read(MAX_RESPONSE_BYTES + 1)
     except LineUsageReportError:
         raise
+    except urllib.error.HTTPError as error:
+        raise LineUsageReportError(_http_error_summary(operation, error)) from None
     except Exception:
         raise LineUsageReportError(f"{operation} request failed") from None
     finally:
@@ -121,13 +169,10 @@ def _read_json_response(
 
 
 def _line_request(endpoint: str, channel_access_token: str) -> urllib.request.Request:
-    if (
-        not isinstance(channel_access_token, str)
-        or not channel_access_token.strip()
-        or "\r" in channel_access_token
-        or "\n" in channel_access_token
-    ):
-        raise LineUsageReportError("LINE_CHANNEL_ACCESS_TOKEN is required")
+    token = _single_line_secret(
+        channel_access_token,
+        "LINE_CHANNEL_ACCESS_TOKEN",
+    )
     request = urllib.request.Request(
         endpoint,
         headers={"Accept": "application/json"},
@@ -135,7 +180,7 @@ def _line_request(endpoint: str, channel_access_token: str) -> urllib.request.Re
     )
     request.add_unredirected_header(
         "Authorization",
-        f"Bearer {channel_access_token.strip()}",
+        f"Bearer {token}",
     )
     return request
 
@@ -293,12 +338,24 @@ def render_report(
 
 
 def _validated_recipient(value: str) -> str:
-    if not isinstance(value, str) or "\r" in value or "\n" in value:
+    if not isinstance(value, str):
         raise LineUsageReportError("LINE_USAGE_REPORT_TO is invalid")
-    display_name, address = parseaddr(value.strip())
-    if display_name or address != value.strip() or not EMAIL_PATTERN.fullmatch(address):
+    normalized = value.strip()
+    if not normalized or "\r" in normalized or "\n" in normalized:
+        raise LineUsageReportError("LINE_USAGE_REPORT_TO is invalid")
+    display_name, address = parseaddr(normalized)
+    if display_name or address != normalized or not EMAIL_PATTERN.fullmatch(address):
         raise LineUsageReportError("LINE_USAGE_REPORT_TO is invalid")
     return address
+
+
+def _validated_idempotency_suffix(value: str) -> str:
+    if not isinstance(value, str):
+        raise LineUsageReportError("idempotency suffix is invalid")
+    normalized = value.strip()
+    if normalized and not PROVIDER_ERROR_CODE_PATTERN.fullmatch(normalized):
+        raise LineUsageReportError("idempotency suffix is invalid")
+    return normalized
 
 
 def send_resend_report(
@@ -309,16 +366,14 @@ def send_resend_report(
     checked_at: datetime,
     warning: bool,
     warning_threshold: int,
+    idempotency_suffix: str = "",
     timeout: int = REQUEST_TIMEOUT_SECONDS,
     opener: Callable[..., Any] | None = None,
 ) -> str:
-    if (
-        not isinstance(resend_api_key, str)
-        or not resend_api_key.strip()
-        or "\r" in resend_api_key
-        or "\n" in resend_api_key
-    ):
-        raise LineUsageReportError("LINE_USAGE_REPORT_RESEND_API_KEY is required")
+    api_key = _single_line_secret(
+        resend_api_key,
+        "LINE_USAGE_REPORT_RESEND_API_KEY",
+    )
     destination = _validated_recipient(recipient)
     jst_time = checked_at.astimezone(JST)
     idempotency_key = (
@@ -327,6 +382,9 @@ def send_resend_report(
         if warning
         else f"tennis-court-watcher/line-usage-weekly/{jst_time:%Y-%m-%d}"
     )
+    suffix = _validated_idempotency_suffix(idempotency_suffix)
+    if suffix:
+        idempotency_key = f"{idempotency_key}/{suffix}"
     payload = {
         "from": REPORT_FROM,
         "to": [destination],
@@ -349,12 +407,13 @@ def send_resend_report(
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Idempotency-Key": idempotency_key,
+            "User-Agent": HTTP_USER_AGENT,
         },
         method="POST",
     )
     request.add_unredirected_header(
         "Authorization",
-        f"Bearer {resend_api_key.strip()}",
+        f"Bearer {api_key}",
     )
     response = _read_json_response(
         request,
@@ -386,6 +445,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--weekly", action="store_true")
     parser.add_argument("--warning-already-sent", action="store_true")
     parser.add_argument("--warning-marker", default="")
+    parser.add_argument("--idempotency-suffix", default="")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -421,12 +481,13 @@ def main(argv: list[str] | None = None) -> int:
                 checked_at=checked_at,
                 warning=decision.warning_due,
                 warning_threshold=threshold,
+                idempotency_suffix=args.idempotency_suffix,
             )
             report_sent = True
             if decision.warning_due:
                 _write_warning_marker(args.warning_marker, checked_at)
-    except LineUsageReportError:
-        print("LINE usage reporting failed", file=sys.stderr)
+    except LineUsageReportError as error:
+        print(f"LINE usage reporting failed: {error}", file=sys.stderr)
         return 1
 
     quota = "none" if usage.quota_limit is None else str(usage.quota_limit)

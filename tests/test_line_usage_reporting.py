@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.error
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -65,6 +67,22 @@ def test_fetch_line_usage_uses_both_official_quota_endpoints() -> None:
     ]
     for request in opener.requests:
         assert request.get_header("Authorization") == "Bearer secret-token"
+
+
+def test_line_token_allows_only_outer_clipboard_whitespace() -> None:
+    opener = SequentialOpener(
+        FakeResponse({"type": "limited", "value": 200}),
+        FakeResponse({"totalUsage": 19}),
+    )
+
+    reporting.fetch_line_usage("\r\n secret-token \r\n", opener=opener)
+
+    assert all(
+        request.get_header("Authorization") == "Bearer secret-token"
+        for request in opener.requests
+    )
+    with pytest.raises(reporting.LineUsageReportError):
+        reporting.fetch_line_usage("secret\ntoken", opener=opener)
 
 
 @pytest.mark.parametrize(
@@ -152,6 +170,7 @@ def test_resend_report_uses_operational_recipient_and_idempotency() -> None:
     request = opener.requests[0]
     assert request.full_url == reporting.RESEND_EMAIL_ENDPOINT
     assert request.get_header("Authorization") == "Bearer resend-secret"
+    assert request.get_header("User-agent") == reporting.HTTP_USER_AGENT
     assert request.get_header("Idempotency-key") == (
         "tennis-court-watcher/line-usage-weekly/2026-08-22"
     )
@@ -162,6 +181,131 @@ def test_resend_report_uses_operational_recipient_and_idempotency() -> None:
         "name": "tcw_source",
         "value": "line_usage_report",
     }
+
+
+def test_manual_report_uses_run_specific_idempotency_suffix() -> None:
+    opener = SequentialOpener(FakeResponse({"id": "resend_message_manual"}))
+
+    reporting.send_resend_report(
+        "resend-secret",
+        "operator@example.com",
+        reporting.RenderedReport("subject", "text", "<p>text</p>"),
+        checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+        warning=False,
+        warning_threshold=180,
+        idempotency_suffix=" 32456481413 ",
+        opener=opener,
+    )
+
+    assert opener.requests[0].get_header("Idempotency-key") == (
+        "tennis-court-watcher/line-usage-weekly/2026-08-22/32456481413"
+    )
+    with pytest.raises(reporting.LineUsageReportError):
+        reporting.send_resend_report(
+            "resend-secret",
+            "operator@example.com",
+            reporting.RenderedReport("subject", "text", "<p>text</p>"),
+            checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+            warning=False,
+            warning_threshold=180,
+            idempotency_suffix="invalid/suffix",
+            opener=opener,
+        )
+
+
+def test_resend_key_allows_only_outer_clipboard_whitespace() -> None:
+    opener = SequentialOpener(FakeResponse({"id": "resend_message_2"}))
+
+    reporting.send_resend_report(
+        "\r\n resend-secret \r\n",
+        "\r\n operator@example.com \r\n",
+        reporting.RenderedReport("subject", "text", "<p>text</p>"),
+        checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+        warning=False,
+        warning_threshold=180,
+        opener=opener,
+    )
+
+    assert opener.requests[0].get_header("Authorization") == "Bearer resend-secret"
+    payload = json.loads(opener.requests[0].data.decode("utf-8"))
+    assert payload["to"] == ["operator@example.com"]
+    with pytest.raises(reporting.LineUsageReportError):
+        reporting.send_resend_report(
+            "resend\nsecret",
+            "operator@example.com",
+            reporting.RenderedReport("subject", "text", "<p>text</p>"),
+            checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+            warning=False,
+            warning_threshold=180,
+            opener=opener,
+        )
+
+
+def test_http_error_logs_only_safe_status_and_provider_code() -> None:
+    provider_error = urllib.error.HTTPError(
+        reporting.RESEND_EMAIL_ENDPOINT,
+        403,
+        "Forbidden",
+        {},
+        BytesIO(
+            json.dumps(
+                {
+                    "name": "invalid_api_key",
+                    "message": "sensitive provider details",
+                }
+            ).encode("utf-8")
+        ),
+    )
+
+    def failing_opener(_request: Any, *, timeout: int) -> Any:
+        assert timeout > 0
+        raise provider_error
+
+    with pytest.raises(reporting.LineUsageReportError) as captured:
+        reporting.send_resend_report(
+            "resend-secret",
+            "operator@example.com",
+            reporting.RenderedReport("subject", "text", "<p>text</p>"),
+            checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+            warning=False,
+            warning_threshold=180,
+            opener=failing_opener,
+        )
+
+    assert str(captured.value) == (
+        "Resend report request failed (status=403, code=invalid_api_key)"
+    )
+    assert "sensitive provider details" not in str(captured.value)
+
+
+def test_non_json_http_error_is_classified_without_logging_body() -> None:
+    provider_error = urllib.error.HTTPError(
+        reporting.RESEND_EMAIL_ENDPOINT,
+        403,
+        "Forbidden",
+        {"Content-Type": "text/html; charset=UTF-8"},
+        BytesIO(b"<html>sensitive edge response</html>"),
+    )
+
+    def failing_opener(_request: Any, *, timeout: int) -> Any:
+        assert timeout > 0
+        raise provider_error
+
+    with pytest.raises(reporting.LineUsageReportError) as captured:
+        reporting.send_resend_report(
+            "resend-secret",
+            "operator@example.com",
+            reporting.RenderedReport("subject", "text", "<p>text</p>"),
+            checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+            warning=False,
+            warning_threshold=180,
+            opener=failing_opener,
+        )
+
+    assert str(captured.value) == (
+        "Resend report request failed (status=403, code=non_json_response)"
+    )
+    assert "sensitive edge response" not in str(captured.value)
 
 
 @pytest.mark.parametrize(
@@ -226,7 +370,11 @@ def test_workflow_checks_daily_reports_saturday_and_keeps_secrets_out() -> None:
         "WARNING_ALREADY_SENT": (
             "${{ steps.warning-marker.outputs.cache-hit || false }}"
         ),
+        "IDEMPOTENCY_SUFFIX": (
+            "${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}"
+        ),
     }
+    assert "--idempotency-suffix" in report["run"]
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "mie.masa" not in workflow_text
     assert "actions/cache/restore@0057852" in workflow_text
