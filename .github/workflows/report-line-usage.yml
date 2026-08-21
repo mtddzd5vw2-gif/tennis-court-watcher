@@ -1,0 +1,111 @@
+name: Report LINE message usage
+run-name: Report LINE message usage [${{ github.event_name == 'schedule' && 'scheduled' || inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Query LINE usage without sending email
+        type: boolean
+        default: true
+      force_weekly_report:
+        description: Send the weekly report during a manual live run
+        type: boolean
+        default: true
+  schedule:
+    # 毎日12:07 JSTに確認し、土曜は週次報告、180通到達時は月1回警告する。
+    - cron: "7 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: line-usage-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.ENABLE_LINE_USAGE_REPORTS == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Determine report period and mode
+        id: report-mode
+        shell: bash
+        env:
+          FORCE_WEEKLY_REPORT: ${{ inputs.force_weekly_report || false }}
+        run: |
+          echo "month=$(TZ=Asia/Tokyo date +%Y-%m)" >> "${GITHUB_OUTPUT}"
+
+          weekly=false
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]] &&
+             [[ "$(TZ=Asia/Tokyo date +%u)" == "6" ]]; then
+            weekly=true
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]] &&
+               [[ "${FORCE_WEEKLY_REPORT}" == "true" ]]; then
+            weekly=true
+          fi
+          echo "weekly=${weekly}" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore monthly warning marker
+        id: warning-marker
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: run-state/line-usage-warning
+          key: >-
+            line-usage-warning-${{ steps.report-mode.outputs.month }}-${{ vars.LINE_USAGE_WARNING_THRESHOLD || '180' }}
+
+      - name: Query usage and send report when required
+        id: report
+        shell: bash
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USAGE_REPORT_RESEND_API_KEY: ${{ secrets.LINE_USAGE_REPORT_RESEND_API_KEY }}
+          LINE_USAGE_REPORT_TO: ${{ secrets.LINE_USAGE_REPORT_TO }}
+          LINE_USAGE_WARNING_THRESHOLD: ${{ vars.LINE_USAGE_WARNING_THRESHOLD || '180' }}
+          WEEKLY_REPORT: ${{ steps.report-mode.outputs.weekly }}
+          WARNING_ALREADY_SENT: ${{ steps.warning-marker.outputs.cache-hit || false }}
+        run: |
+          report_args=(
+            --warning-marker run-state/line-usage-warning
+          )
+          if [[ "${WEEKLY_REPORT}" == "true" ]]; then
+            report_args+=(--weekly)
+          fi
+          if [[ "${WARNING_ALREADY_SENT}" == "true" ]]; then
+            report_args+=(--warning-already-sent)
+          fi
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            report_args+=(--dry-run)
+          fi
+
+          python scripts/report_line_usage.py "${report_args[@]}"
+
+          if [[ -f run-state/line-usage-warning ]]; then
+            echo "warning_marker_created=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "warning_marker_created=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Save monthly warning marker
+        if: >-
+          steps.warning-marker.outputs.cache-hit != 'true' &&
+          steps.report.outputs.warning_marker_created == 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: run-state/line-usage-warning
+          key: >-
+            line-usage-warning-${{ steps.report-mode.outputs.month }}-${{ vars.LINE_USAGE_WARNING_THRESHOLD || '180' }}

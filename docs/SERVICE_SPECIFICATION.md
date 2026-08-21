@@ -331,6 +331,19 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - Supabase Authのメール認証を会員認証の正として維持し、LINE Login v2.1はログイン済み会員との連携にだけ使用する。LINE Login channelとMessaging API channelは同一providerへ作成する。
 - `line_account_links`は1会員1LINE account、1LINE account 1会員をDB制約で強制し、`line_link_sessions`はSHA-256のstate/nonce hashだけを10分間保持する。ブラウザはLINE user IDやlink sessionを参照・更新できず、本人かつactive会員にはRLS下で安全な状態列だけをcolumn-level Grantし、`SECURITY INVOKER` RPCも同じRLSへ従わせる。
 
+### 13.3 配信予算
+
+- LINE公式アカウントは月200通の無料枠で運用し、自動で有料プランへ変更しない。
+- LINE Pushの月間運用上限は180通とする。送信直前に公式APIの月間使用量を
+  確認し、到達後はLINEを送信せず、配信可能な既存email channelへ
+  フォールバックする。
+- 同じworker実行で同一会員に一致した複数の空き枠は1通へ集約する。
+- 毎日12:07 JSTに使用量を確認し、毎週土曜に運用宛先へ週次報告する。
+  180通到達時は当月1回だけ追加警告する。
+- LINE Official Account Managerからの並行配信も同じ月間使用量に含める。
+- 報告先メールアドレスと各provider credentialはsecretとして管理し、
+  repository、公開データ、Actions log、Artifactへ出さない。
+
 ## 14. 無料・有料プラン案
 
 料金、上限値、提供開始時期はいずれも**要決定**。次は検討用の案であり、確定仕様ではない。
