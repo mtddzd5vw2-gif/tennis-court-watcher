@@ -97,6 +97,13 @@ def test_matching_rpc_arrays_and_rows_have_deterministic_order() -> None:
     assert "order by rule.user_id, rule.id;" in sql
 
 
+def test_migration_does_not_schema_qualify_coalesce_syntax() -> None:
+    sql = migration_sql()
+
+    assert "pg_catalog.coalesce" not in sql
+    assert sql.count("coalesce(") == 2
+
+
 def test_matching_rpc_execute_permission_is_service_role_only() -> None:
     sql = compact(migration_sql())
     matching_section = sql[
