@@ -52,7 +52,7 @@ Phase 4の本格実装と鹿児島β公開へ進む前に、次のLaunch Readine
 3. **利用規約・Privacy・運営者/問い合わせ先の確定** — 一般公開可能な正式版へ更新する
 4. **各予約サイトの利用規約・アクセス頻度最終確認** — 取得可否と適切なアクセス頻度を記録する
 5. **GitHub Actions外部ActionのSHA pinning** — supply-chain riskを低減する
-6. **Monitoring Policy UX** — 現行監視範囲をUIで明示し、範囲外条件は保存可能なまま需要把握へ利用する
+6. **Monitoring Policy UX** — 現行監視範囲をUIで明示し、会員向け通知対象を土日・日本の祝日、8:00〜13:00へ固定する。利用時間は60分刻み、初期値120分とする
 7. **β運用指標の決定** — 取得品質、通知速度、通知品質、利用状況を評価できる最小指標を決める
 
 Launch Readiness Gateは新しいPhase番号を持たない。
@@ -348,7 +348,7 @@ Phase 1全体を運用可能な品質にし、Phase 0へ影響を与えずに公
 - active会員の有効かつ完全な条件だけを返す `list_notification_rules_for_matching()` を、`security invoker` のservice-role専用RPCとして追加した。
 - GitHub Actionsは `ENABLE_NOTIFICATION_MATCHING=true` の場合だけスクレイピング後に照合し、service-role keyをそのstepのSecret環境変数だけへ渡す。照合失敗をwarningに留め、availability取得・JSON commit・Pages更新をブロックしない。
 - match詳細は `data/`、GitHub Pages、公開Artifactへ保存せず、CLIログも集計値だけとする。
-- 現在のスクレイパーは直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を生成する。通知条件自体は30分以上を指定でき、取得済み候補との実際の重複時間が最低連続時間以上なら一致する。通常の平日や8:00〜13:00外は現在のMonitoring Policyでは取得しない。祝日は実際の日付の曜日で判定する。
+- 現在のスクレイパーは直近15日間の土日・日本の祝日、8:00〜13:00について、連続60分以上の空き候補を生成する。会員向け通知条件も同じ曜日・時間帯へ固定し、利用時間は60〜300分の60分刻み、初期値120分とする。祝日は実際の日付の曜日で判定するため、保存時はISO曜日1〜7を使用する。固定化前の条件は編集・再保存時に現行条件へ移行する。
 - [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)とUI・RPC・照合エンジン・workflowの静的テストを追加した。
 - Phase 2は完了である。通知条件の保存・管理、1利用者5件の上限、空き候補との照合までを実装済みである。
 - Phase 3.1のqueue foundation、Phase 3.2のemail delivery worker、Phase 3.3のproduction deploymentとcanary検証、Phase 3.4のautomatic enqueue/dispatchとlegacy経路整理は完了した。
