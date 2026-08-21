@@ -7,6 +7,12 @@
 Launch Readiness Gateは完了しており、本書の順序で実装を開始する。
 本番LINE配信はfeature flag、shadow enqueue、単一会員、限定βの順に有効化する。
 
+2026-08-21に最初の前方migrationとして、`notification_channel`の`line`追加、
+`line_account_links`、`line_link_sessions`、本人向け安全な連携状態RPCを実装した。
+ブラウザへLINE user IDや連携sessionのSELECT権限は付与しない。
+本人かつactive会員にはRLS下で安全な状態列だけをcolumn-level Grantし、
+`SECURITY INVOKER` RPCも同じRLSへ従わせる。
+
 ## 2. 採用方式
 
 次の構成を採用する。
@@ -111,7 +117,7 @@ LINE display name、profile image、status message、email addressは取得し�
 ## 8. 実装順序
 
 1. LINE provider、公式アカウント、Messaging API channel、LINE Login channelを同一providerに準備する。
-2. schema、RLS、Grant、link session、account linkのmigrationを作る。
+2. schema、RLS、Grant、link session、account linkのmigrationを作る。— 完了
 3. LINE Login開始・callback・解除Edge Functionを実装する。
 4. My Pageへ連携状態と操作UIを追加する。
 5. webhook署名検証、冪等化、block/unfollow反映を実装する。

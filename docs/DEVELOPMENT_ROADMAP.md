@@ -444,6 +444,8 @@ Actionsで照合を実行するには、Repository Variable
 **状態: 実装着手。Launch Readiness Gate完了。**
 
 [Phase 4 LINE通知設計](./PHASE4_LINE_NOTIFICATION_DESIGN.md)で採用方式と実装順序を定義する。
+LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人向け安全な状態RPCは
+`20260821051500_add_line_account_link_foundation.sql`で前方追加する。
 
 ### 目的
 

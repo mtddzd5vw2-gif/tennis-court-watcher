@@ -329,6 +329,7 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - Phase 4は管理者専用LINE経路を再構築せず、管理者を含む会員共通LINE notification基盤として導入する。
 - 導入日、重複配信防止、監視、ロールバックを定める。
 - Supabase Authのメール認証を会員認証の正として維持し、LINE Login v2.1はログイン済み会員との連携にだけ使用する。LINE Login channelとMessaging API channelは同一providerへ作成する。
+- `line_account_links`は1会員1LINE account、1LINE account 1会員をDB制約で強制し、`line_link_sessions`はSHA-256のstate/nonce hashだけを10分間保持する。ブラウザはLINE user IDやlink sessionを参照・更新できず、本人かつactive会員にはRLS下で安全な状態列だけをcolumn-level Grantし、`SECURITY INVOKER` RPCも同じRLSへ従わせる。
 
 ## 14. 無料・有料プラン案
 
