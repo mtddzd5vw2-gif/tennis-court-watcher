@@ -42,6 +42,11 @@ ACCEPT_TERMS_FIX_MIGRATION = (
     / "supabase/migrations"
     / "20260806000000_fix_accept_current_terms_conflict.sql"
 )
+FINAL_TERMS_VERSION_MIGRATION = (
+    ROOT
+    / "supabase/migrations"
+    / "20260821034956_finalize_terms_version.sql"
+)
 MOCK_AUTH_CONFIG = """window.TCW_AUTH_CONFIG = Object.freeze({
   supabaseUrl: "https://project.example.supabase.co",
   supabasePublishableKey: "sb_publishable_test_public_only",
@@ -55,7 +60,7 @@ window.supabase = {
     window.__authCalls = window.__authCalls || [];
     window.__dataCalls = window.__dataCalls || [];
     const mock = window.__mockAuth || {};
-    const currentVersion = mock.currentVersion || "2026-08-04-draft";
+    const currentVersion = mock.currentVersion || "2026-08-21";
     const acceptedAt = mock.acceptedAt || "2026-08-04T01:30:00Z";
 
     function resultFor(table) {
@@ -508,12 +513,56 @@ def test_member_pages_hide_internal_status_and_development_language() -> None:
         assert not account.find(attrs={selector: True})
 
 
-def test_legal_pages_are_explicitly_drafts_requiring_review() -> None:
-    for relative_page in (Path("legal/terms.html"), Path("legal/privacy.html")):
-        text = BeautifulSoup(read(relative_page), "html.parser").get_text(" ", strip=True)
-        assert "暫定案" in text
-        assert "一般公開前" in text
-        assert "内容確認が必要" in text
+def test_legal_pages_are_formal_and_publish_operator_contact() -> None:
+    terms = BeautifulSoup(read("legal/terms.html"), "html.parser")
+    privacy = BeautifulSoup(read("legal/privacy.html"), "html.parser")
+
+    for page in (terms, privacy):
+        text = page.get_text(" ", strip=True)
+        assert "版番号: 2026-08-21" in text
+        assert "発効日: 2026-08-21" in text
+        assert "グランドスラム（鹿児島市内テニスサークル）" in text
+        assert "wakahisamk [at] gmail [dot] com" in text
+        assert "wakahisamk@gmail.com" not in read(
+            "legal/terms.html" if page is terms else "legal/privacy.html"
+        )
+        assert "暫定案" not in text
+        assert "一般公開前" not in text
+
+    terms_text = terms.get_text(" ", strip=True)
+    assert "本サービスは現在無料です" in terms_text
+    assert "予約または予約代行を行いません" in terms_text
+    assert "消費者契約法" in terms_text
+
+    privacy_text = privacy.get_text(" ", strip=True)
+    for required in (
+        "利用目的",
+        "第三者提供",
+        "国外での取扱い",
+        "原則として作成から90日間",
+        "開示・訂正・利用停止等",
+        "住所および代表者氏名",
+        "広告目的の行動履歴やセッションリプレイを取得しません",
+    ):
+        assert required in privacy_text
+
+
+def test_formal_terms_migration_preserves_history_and_requires_reconsent() -> None:
+    migration = FINAL_TERMS_VERSION_MIGRATION.read_text(
+        encoding="utf-8"
+    ).lower()
+
+    assert "'2026-08-04-draft'" in migration
+    assert "'2026-08-21'" in migration
+    assert "timestamptz '2026-08-21 00:00:00+09'" in migration
+    assert "set is_current = false" in migration
+    assert "insert into public.legal_document_versions" in migration
+    assert "set membership_status = 'pending_terms'" in migration
+    assert "profile.membership_status = 'active'" in migration
+    assert "not exists" in migration
+    assert "acceptance.version = '2026-08-21'" in migration
+    assert "delete from public.terms_acceptances" not in migration
+    assert "truncate" not in migration
 
 
 def test_member_profile_migration_defines_required_tables_and_data_minimization() -> None:
