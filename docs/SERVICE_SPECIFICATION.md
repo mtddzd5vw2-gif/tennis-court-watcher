@@ -7,7 +7,7 @@
 
 2026-08-21時点でPhase 0〜3は完了している。
 Phase 1の退会もproduction acceptanceまで完了した。
-Phase 4はaccount linkのDB基盤とLINE Login server-side境界までコード実装済みであり、My Page UI、webhook、利用者別LINE配信以降は未実装である。
+Phase 4はaccount linkのDB基盤とLINE Login server-side境界を本番反映し、My Pageの連携状態・開始・二段階解除UIまで実装済みである。スマホでの正方向acceptance、webhook、利用者別LINE配信以降は未完了である。
 
 長期的な目的は[Project Vision](./PROJECT_VISION.md)、
 現在地・実装順序・完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
@@ -93,7 +93,7 @@ Phase 1の画面名とURLは、GitHub Pagesのリポジトリ配下で動く相�
 | プライバシーに関する表示 | `legal/privacy.html` | 公開 | 1 | 正式版 `2026-08-21`。取得情報、利用目的、委託先、第三者提供、保持・削除、開示等請求 |
 | 会員登録・ログイン | `auth/login.html` | 公開 | 1 | メールアドレス、規約同意、マジックリンク送信 |
 | メール認証結果 | `auth/callback.html` | 公開 | 1 | 認証成功、期限切れ、無効リンク、再送導線 |
-| マイページ | `account/index.html` | 会員限定 | 1 | 会員状態、メール認証状態、規約同意状態、ログアウト、退会導線 |
+| マイページ | `account/index.html` | 会員限定 | 1 / 4 | 規約同意状態、空き通知導線、LINE連携状態・操作、ログアウト、退会導線 |
 | 空き通知 | `account/notifications.html` | active会員限定 | 2 | 設定一覧、作成・編集・一時停止・有効化・削除、施設、日付範囲、土曜・日曜・祝日、時間帯、利用時間 |
 | 通知履歴 | `/mypage/notifications` | 会員限定 | 3候補 | 送信履歴。MVPに含めるか**要決定** |
 | LINE連携 | `/mypage/line` | 会員限定 | 4 | 連携状態、連携開始、解除 |
@@ -220,14 +220,21 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 
 メールアドレス変更機能をPhase 1に含めるかは**要決定**。
 
-### 10.2 後続Phaseで追加する情報
+### 10.2 Phase 4で追加する情報
+
+- LINE連携は本人かつactive会員だけが開始・解除できる。
+- 画面には `get_my_line_link_status()` が返す連携有無と安全な状態だけを表示し、LINE user ID、display name、profile image、OAuth tokenは表示・保存しない。
+- callbackの粗い結果は表示前にURLから消去し、開始Functionが返す遷移先はLINE公式のauthorization endpointだけを許可する。
+- 解除は確認画面を開いた後の明示操作を必要とし、リクエスト本文へ `user_id` を含めない。
+- 利用者別LINE配信workerが有効になるまでは「準備中」と明示し、連携だけで通知配信が始まると誤認させない。
+
+### 10.3 後続Phaseで追加する情報
 
 - メール・LINEの通知チャネル状態
-- LINE連携状態
 - 通知履歴
 - 現在のプラン、利用上限、契約状態
 
-### 10.3 認可
+### 10.4 認可
 
 - マイページは認証必須とする。
 - URLやリクエスト中の `user_id` を信用せず、認証セッションの利用者IDを使用する。

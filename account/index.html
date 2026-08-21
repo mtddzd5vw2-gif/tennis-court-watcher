@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="../assets/css/auth.css">
     <script src="../assets/config/auth-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.2/dist/umd/supabase.js"></script>
+    <script src="../assets/js/line-account-link.js" defer></script>
     <script src="../assets/js/auth-foundation.js" defer></script>
   </head>
   <body data-page="account">
@@ -84,6 +85,81 @@
             希望する施設・曜日・時間帯を登録できます。
           </p>
           <a class="button" href="notifications.html">空き通知を設定する</a>
+        </section>
+
+        <section
+          class="account-card line-link-card"
+          data-line-link-panel
+          aria-labelledby="line-link-title"
+          hidden
+        >
+          <div class="line-link-card__heading">
+            <h2 id="line-link-title">LINE通知</h2>
+            <span class="line-link-card__beta">準備中</span>
+          </div>
+          <p
+            class="line-link-summary"
+            data-line-link-summary
+            aria-live="polite"
+          >
+            LINE連携状況を確認しています…
+          </p>
+          <p class="muted" data-line-link-guidance></p>
+          <p
+            class="status-text"
+            data-line-link-result
+            aria-live="polite"
+          ></p>
+          <div class="button-row">
+            <button
+              class="button"
+              type="button"
+              data-line-link-start
+              disabled
+            >
+              LINEアカウントを連携する
+            </button>
+            <button
+              class="button button--secondary"
+              type="button"
+              data-line-unlink-start
+              disabled
+              hidden
+            >
+              連携を解除する
+            </button>
+          </div>
+
+          <div class="line-unlink-panel" data-line-unlink-panel hidden>
+            <p>
+              <strong>このLINEアカウントとの連携を解除しますか？</strong>
+            </p>
+            <p class="muted">
+              解除後にLINE通知は送られません。再び利用する場合は、
+              同じ手順で連携できます。
+            </p>
+            <div class="button-row">
+              <button
+                class="button button--danger"
+                type="button"
+                data-line-unlink-confirm
+              >
+                LINE連携を解除する
+              </button>
+              <button
+                class="button button--secondary"
+                type="button"
+                data-line-unlink-cancel
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+          <p
+            class="status-text"
+            data-line-link-action-status
+            aria-live="polite"
+          ></p>
         </section>
 
         <section class="account-card" aria-labelledby="account-actions-title">
