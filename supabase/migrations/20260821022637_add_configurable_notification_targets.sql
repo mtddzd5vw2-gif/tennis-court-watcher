@@ -232,7 +232,7 @@ begin
       using errcode = '22023';
   end if;
 
-  select pg_catalog.coalesce(
+  select coalesce(
     pg_catalog.array_agg(
       distinct weekday_input.weekday
       order by weekday_input.weekday
@@ -404,7 +404,7 @@ as $$
       distinct selected_facility.facility_id
       order by selected_facility.facility_id
     ) as facility_ids,
-    pg_catalog.coalesce(
+    coalesce(
       pg_catalog.array_agg(
         distinct selected_weekday.weekday
         order by selected_weekday.weekday
