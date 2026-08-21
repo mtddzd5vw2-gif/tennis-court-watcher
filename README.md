@@ -63,9 +63,9 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 
 PKCEのcode verifierはリンクを要求したブラウザ側に保存されるため、マジックリンクは原則としてログイン操作を開始した同じブラウザで開く必要があります。別端末・別ブラウザで開いて認証に失敗した場合は、利用するブラウザでログイン画面から再送してください。
 
-`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4の利用者別LINE連携と課金は未実装です。
+`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。`20260821034956_finalize_terms_version.sql` は正式規約 `2026-08-21` をcurrentへ切り替え、過去の同意履歴を保持したままactive会員へ再同意を要求します。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4の利用者別LINE連携と課金は未実装です。
 
-開発用の現行規約版は `2026-08-04-draft` です。一般公開前に正式な規約本文・版番号・発効日へ更新し、開発用版への同意済み利用者にも正式版への再同意を求めてください。
+正式な現行規約版は `2026-08-21`、発効日は2026-08-21です。運営者はグランドスラム（鹿児島市内テニスサークル）で、問い合わせ先は法務ページに簡易難読化して表示します。重要な規約改定では新しい版を追加し、過去の同意履歴を保持したまま再同意を求めます。
 
 追加した画面は次のとおりです。すべてGitHub Pagesのリポジトリ配下で動く相対リンクを使用します。
 
@@ -73,10 +73,10 @@ PKCEのcode verifierはリンクを要求したブラウザ側に保存される
 - `auth/callback.html`: メール認証callback画面
 - `account/index.html`: 最小限のマイページ
 - `account/notifications.html`: 空き通知の一覧・作成・編集・停止・有効化・削除画面
-- `legal/terms.html`: 利用規約の暫定案
-- `legal/privacy.html`: プライバシーポリシーの暫定案
+- `legal/terms.html`: 正式な利用規約
+- `legal/privacy.html`: 正式なプライバシーポリシー
 
-法務ページは暫定案であり、会員登録の一般公開前に運営者表示、問い合わせ窓口、版番号、発効日、保持・削除方針などの内容確認が必要です。詳細と未決事項は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
+法務ページは2026-08-21に正式化し、運営者、問い合わせ窓口、版番号、発効日、取得情報、利用目的、委託先、第三者提供、90日通知データ保持、退会時削除、開示等請求、規約改定時の再同意を確定しました。詳細は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
 
 Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限し、`20260821022637_add_configurable_notification_targets.sql` は祝日選択と監視範囲内の時間帯選択を追加します。DB triggerが最終的な件数強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4の利用者別LINE通知は将来機能です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 
@@ -281,8 +281,9 @@ $env:AUTH_CALLBACK_URL = "http://localhost:8765/auth/callback.html"
 6. `supabase/migrations/20260807120000_grant_notification_matching_rpc_dependencies.sql`
 7. `supabase/migrations/20260807130000_limit_notification_rules_per_user.sql`
 8. `supabase/migrations/20260821022637_add_configurable_notification_targets.sql`
+9. `supabase/migrations/20260821034956_finalize_terms_version.sql`
 
-適用済みmigrationを再実行・編集しないでください。対象環境のmigration履歴を確認し、未適用分だけを上記の順でそれぞれ1回適用します。適用前にSQL、RLS、Grant、初期データをレビューし、検証環境で実DBテストを行ってください。第7migrationは既に6件以上の通知条件を持つ利用者がいると、利用者IDやメールアドレスを表示せずに失敗します。第8migrationは対応外の旧曜日・時間値が残っている環境では匿名エラーで停止します。適用前に利用者ごとの件数と条件値を個人情報を出さずに確認してください。
+適用済みmigrationを再実行・編集しないでください。対象環境のmigration履歴を確認し、未適用分だけを上記の順でそれぞれ1回適用します。適用前にSQL、RLS、Grant、初期データをレビューし、検証環境で実DBテストを行ってください。第7migrationは既に6件以上の通知条件を持つ利用者がいると、利用者IDやメールアドレスを表示せずに失敗します。第8migrationは対応外の旧曜日・時間値が残っている環境では匿名エラーで停止します。第9migrationはdraft規約がcurrentでない環境では停止し、正式版への再同意が完了するまでactive会員を `pending_terms` として通知対象外にします。適用前に利用者ごとの件数と条件値を個人情報を出さずに確認してください。
 
 `list_notification_rules_for_matching()` は `security invoker` のため、呼び出し元の `service_role` にも参照先テーブルの通常のSELECT権限が必要です。RLS bypassはテーブルGRANTの代わりにはなりません。第6migrationは `profiles`、`notification_rules`、`notification_rule_facilities`、`notification_rule_weekdays` の4テーブルに限ってSELECTだけを付与し、書込み権限やブラウザロールの権限は追加しません。
 
@@ -293,6 +294,8 @@ $env:AUTH_CALLBACK_URL = "http://localhost:8765/auth/callback.html"
 3. 既存ユーザー向けの `terms_acceptances` は自動生成されていない。
 4. 新しい開発用ユーザーでマジックリンクを開き、同意後にprofileが `active` となり、同意履歴が1件追加される。
 5. 同じ規約への再同意で履歴が重複しない。
+
+第9migrationの実行後は、`2026-08-04-draft` が非current、`2026-08-21` がcurrentとなり、過去の同意履歴が残っていることを確認します。既存active会員は `pending_terms` となり、マイページで正式版へ同意すると新しい履歴が追加されて `active` へ戻ります。
 
 SQL Editorへ貼り付ける前に、プロジェクト名と環境を再確認してください。service role key、secret key、DBパスワードはmigration適用手順では使用しません。
 
@@ -379,7 +382,7 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 Phase 4へ進む前にLaunch Readiness Gateを完了します。
 
 1. 退会failure-pathのhardening — 完了（2026-08-20）
-2. 利用規約・プライバシーポリシー・運営者/問い合わせ先の正式化
+2. 利用規約・プライバシーポリシー・運営者/問い合わせ先の正式化 — 完了（2026-08-21）
 3. 各予約サイトの利用規約・アクセス頻度の最終確認
 4. GitHub Actions外部ActionのコミットSHA固定
 5. Monitoring Policyと監視範囲外条件のUI表示
