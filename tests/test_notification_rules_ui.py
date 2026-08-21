@@ -10,6 +10,7 @@ ROOT = Path(__file__).parents[1]
 PAGE_PATH = ROOT / "account/notifications.html"
 ACCOUNT_PATH = ROOT / "account/index.html"
 SCRIPT_PATH = ROOT / "assets/js/notification-rules.js"
+CSS_PATH = ROOT / "assets/css/auth.css"
 DESIGN_PATH = ROOT / "docs/PHASE2_NOTIFICATION_RULES_DESIGN.md"
 ROADMAP_PATH = ROOT / "docs/DEVELOPMENT_ROADMAP.md"
 SERVICE_SPEC_PATH = ROOT / "docs/SERVICE_SPECIFICATION.md"
@@ -77,22 +78,14 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
     assert facility_fieldset.find("legend").get_text(strip=True) == "施設"
     assert facility_fieldset.find(attrs={"data-facility-options": True})
 
-    weekday_fieldset = form.find(
-        "fieldset", attrs={"data-weekday-fieldset": True}
+    assert not form.find(attrs={"data-weekday-fieldset": True})
+    assert not form.find(attrs={"data-rule-weekday": True})
+    fixed_policy = form.find(attrs={"data-fixed-notification-policy": True})
+    assert fixed_policy
+    assert fixed_policy["aria-label"] == "通知対象"
+    assert fixed_policy.get_text(" ", strip=True) == (
+        "通知対象 土日・祝日、8:00〜13:00"
     )
-    assert weekday_fieldset.find("legend").get_text(strip=True) == "曜日"
-    weekdays = weekday_fieldset.find_all(
-        "input", attrs={"data-rule-weekday": True}
-    )
-    assert [weekday["value"] for weekday in weekdays] == [
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-    ]
 
     assert form.find("input", attrs={"data-rule-date-from": True})["type"] == (
         "date"
@@ -100,17 +93,23 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
     assert form.find("input", attrs={"data-rule-date-to": True})["type"] == (
         "date"
     )
-    start_time = form.find("input", attrs={"data-rule-start-time": True})
-    end_time = form.find("input", attrs={"data-rule-end-time": True})
     duration = form.find(
-        "input", attrs={"data-rule-minimum-duration": True}
+        "select", attrs={"data-rule-minimum-duration": True}
     )
-    assert (start_time["type"], start_time["value"]) == ("time", "08:00")
-    assert (end_time["type"], end_time["value"]) == ("time", "13:00")
-    assert duration["value"] == "60"
-    assert duration["min"] == "30"
-    assert duration["max"] == "720"
-    assert duration["step"] == "30"
+    assert not form.find(attrs={"data-rule-start-time": True})
+    assert not form.find(attrs={"data-rule-end-time": True})
+    options = duration.find_all("option")
+    assert [option["value"] for option in options] == [
+        "60",
+        "120",
+        "180",
+        "240",
+        "300",
+    ]
+    selected = [option for option in options if option.has_attr("selected")]
+    assert len(selected) == 1
+    assert selected[0]["value"] == "120"
+    assert "おすすめ" in selected[0].get_text(strip=True)
     assert not form.find("input", attrs={"data-rule-enabled": True}).has_attr(
         "checked"
     )
@@ -119,6 +118,11 @@ def test_notification_page_has_required_form_controls_and_accessibility() -> Non
         "button"
     )
     assert form.find(attrs={"data-form-errors": True})["aria-live"] == "polite"
+
+    css = read(CSS_PATH)
+    assert ".field select" in css
+    assert ".field select:focus" in css
+    assert '.field select[aria-invalid="true"]' in css
 
 
 def test_notification_page_has_rule_count_and_limit_guidance() -> None:
@@ -166,22 +170,23 @@ def test_notification_page_explains_the_current_acquisition_scope() -> None:
         "直近15日間",
         "土日・祝日",
         "8:00〜13:00",
-        "通常の平日は現在通知されません",
         "連続60分以上",
+    ):
+        assert expected in text
+
+    for removed in (
+        "通常の平日は現在通知されません",
         "監視範囲外でも保存できます",
         "重ならない時間帯",
         "実際に重なった時間",
         "最低連続時間30分",
         "30分以上重なれば一致",
         "実際の日付の曜日",
+        "60分未満の条件も保存できますが",
     ):
-        assert expected in text
+        assert removed not in text
 
-    assert "60分未満の条件も保存できますが" not in text
-    details = guidance.find("details")
-    assert details
-    assert not details.has_attr("open")
-    assert details.find("summary").get_text(strip=True) == "詳しい条件"
+    assert not guidance.find("details")
     assert not notifications.find("input", attrs={"name": "holiday"})
 
 
@@ -200,8 +205,8 @@ def test_notification_script_uses_existing_auth_contract_and_session_identity() 
     assert 'membership_status !== "active"' in script
     assert "membershipRequired.hidden = false" in script
     assert "URLSearchParams" not in script
-    assert 'normalizeTimeInput(rule.start_time, "08:00")' in script
-    assert 'normalizeTimeInput(rule.end_time, "13:00")' in script
+    assert 'const FIXED_NOTIFICATION_START_TIME = "08:00";' in script
+    assert 'const FIXED_NOTIFICATION_END_TIME = "13:00";' in script
 
     for table in (
         "notification_rules",
@@ -235,51 +240,62 @@ def test_notification_script_validates_every_form_rule_in_japanese() -> None:
         "条件名を入力してください。",
         "条件名は80文字以内で入力してください。",
         "施設を1件以上選択してください。",
-        "曜日を1件以上選択してください。",
-        "開始時刻は終了時刻より前にしてください。",
         "開始日は終了日以前の日付にしてください。",
-        "最低連続時間は30〜720分の範囲で、30分単位で入力してください。",
+        "利用時間は1〜5時間の範囲で、1時間単位で選択してください。",
     ):
         assert message in script
 
     assert "trimmedName.length > 80" in script
     assert "selectedFacilities.length < 1" in script
-    assert "selectedWeekdays.length < 1" in script
-    assert "startMinutes >= endMinutes" in script
     assert "dateFromInput.value > dateToInput.value" in script
-    assert "minimumDuration < 30" in script
-    assert "minimumDuration > 720" in script
-    assert "minimumDuration % 30 !== 0" in script
+    assert "ALLOWED_MINIMUM_DURATIONS.has(minimumDuration)" in script
+    assert "minimumDuration < 30" not in script
+    assert "minimumDuration % 30 !== 0" not in script
 
 
-def test_notification_script_rejects_date_ranges_without_selected_weekdays() -> None:
+def test_notification_script_saves_the_fixed_monitoring_policy() -> None:
     script = read(SCRIPT_PATH)
-    helper = script_section(
-        script,
-        "function parseIsoDateUtc",
-        "function validateRuleForm",
-    )
     validation = script_section(
         script,
         "function validateRuleForm",
         "function normalizeTimeInput",
     )
 
-    assert "function dateRangeContainsSelectedWeekday" in helper
-    assert "setUTCFullYear" in helper
-    assert ".getUTCDay()" in helper
-    assert ".getDay()" not in helper
-    assert "weekday === 0 ? 7 : weekday" in helper
-    assert "Math.min(spanDays, 6)" in helper
-    assert (
-        "対象期間内に選択した曜日がありません。"
-        "日付または曜日を変更してください。"
-    ) in validation
-    assert "!dateRangeContainsSelectedWeekday(" in validation
-    assert "[dateFromInput, dateToInput, weekdayFieldset]" in validation
-    assert validation.index("dateFromInput.value > dateToInput.value") < (
-        validation.index("!dateRangeContainsSelectedWeekday(")
+    assert "const FIXED_NOTIFICATION_WEEKDAYS = Object.freeze([" in script
+    assert "1, 2, 3, 4, 5, 6, 7," in script
+    assert "weekday holiday remains eligible" in script
+    assert "p_start_time: FIXED_NOTIFICATION_START_TIME" in validation
+    assert "p_end_time: FIXED_NOTIFICATION_END_TIME" in validation
+    assert "p_weekdays: [...FIXED_NOTIFICATION_WEEKDAYS]" in validation
+    assert "dateRangeContainsSelectedWeekday" not in script
+    assert "data-rule-weekday" not in script
+    assert "data-rule-start-time" not in script
+    assert "data-rule-end-time" not in script
+
+
+def test_notification_script_marks_legacy_rules_until_they_are_resaved() -> None:
+    script = read(SCRIPT_PATH)
+    policy_check = script_section(
+        script,
+        "function usesFixedNotificationPolicy",
+        "function createRuleAction",
     )
+    rendering = script_section(
+        script,
+        "function renderRules",
+        "function renderFacilityOptions",
+    )
+
+    assert "FIXED_NOTIFICATION_START_TIME" in policy_check
+    assert "FIXED_NOTIFICATION_END_TIME" in policy_check
+    assert "FIXED_NOTIFICATION_WEEKDAYS.every(" in policy_check
+    assert "ALLOWED_MINIMUM_DURATIONS.has" in policy_check
+    assert "以前の曜日設定" in rendering
+    assert "以前の時間設定" in rendering
+    assert (
+        "この条件は以前の設定です。編集して保存すると、"
+        "現在の通知対象に更新されます。"
+    ) in rendering
 
 def test_notification_script_uses_atomic_rpc_and_scoped_direct_mutations() -> None:
     script = read(SCRIPT_PATH)
@@ -496,10 +512,14 @@ def test_incomplete_rules_cannot_be_enabled_but_can_still_be_paused() -> None:
     guard = "if (!rule.is_enabled && !canEnableRule(rule.id))"
 
     assert "ruleFacilities.some(" in completeness_check
-    assert "ruleWeekdays.some(" in completeness_check
-    assert "return hasFacility && hasWeekday;" in completeness_check
+    assert "rules.find(" in completeness_check
+    assert "usesFixedNotificationPolicy(rule)" in completeness_check
+    assert (
+        "return hasFacility && rule && usesFixedNotificationPolicy(rule);"
+        in completeness_check
+    )
     assert guard in toggle
-    assert "施設と曜日が1件以上登録された条件だけを有効化できます。" in toggle
+    assert "現在の通知対象に合った条件だけを有効化できます。" in toggle
     assert toggle.index(guard) < toggle.index('.update({ is_enabled: !rule.is_enabled })')
     guarded_section = toggle[
         toggle.index(guard):toggle.index('.update({ is_enabled: !rule.is_enabled })')

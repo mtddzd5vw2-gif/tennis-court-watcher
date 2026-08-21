@@ -183,22 +183,26 @@ h3 {
   font-weight: 700;
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   min-height: 3rem;
   border: 1px solid #aebfba;
   border-radius: 0.7rem;
   padding: 0.7rem 0.85rem;
+  font: inherit;
   color: var(--ink);
   background: var(--surface);
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: 3px solid rgba(20, 122, 91, 0.2);
   border-color: var(--accent);
 }
 
-.field input[aria-invalid="true"] {
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"] {
   border-color: var(--danger);
   background: var(--danger-bg);
 }

@@ -84,20 +84,8 @@
         <div class="notice monitoring-guidance" aria-label="現在の空き取得範囲">
           <p>
             現在は、直近15日間の土日・祝日、8:00〜13:00の空きを確認しています。
-            通常の平日は現在通知されません。
           </p>
-          <details>
-            <summary>詳しい条件</summary>
-            <p>
-              取得する空き枠は連続60分以上です。通知条件は監視範囲外でも保存できますが、
-              通常の平日や8:00〜13:00と重ならない時間帯には、現在照合対象データがありません。
-            </p>
-            <p>
-              監視時間と一部だけ重なる場合は、実際に重なった時間で最低連続時間を判定します。
-              最低連続時間30分の条件も、取得済みの空き枠と30分以上重なれば一致します。
-              祝日は実際の日付の曜日で判定します。
-            </p>
-          </details>
+          <p>取得する空き枠は連続60分以上です。</p>
         </div>
 
         <div class="notification-toolbar">
@@ -140,7 +128,7 @@
             新しい通知条件
           </h2>
           <p class="form-note">
-            施設と曜日をそれぞれ1件以上選択してください。
+            希望する施設と利用時間を選択してください。
           </p>
 
           <form data-notification-rule-form novalidate>
@@ -181,46 +169,14 @@
               </div>
             </fieldset>
 
-            <fieldset
-              class="rule-fieldset"
-              data-weekday-fieldset
-              tabindex="-1"
+            <section
+              class="notice"
+              data-fixed-notification-policy
+              aria-label="通知対象"
             >
-              <legend>曜日</legend>
-              <p class="form-note">
-                通常の平日は現在通知されません。祝日は実際の曜日を選択してください。
-              </p>
-              <div class="checkbox-grid checkbox-grid--weekdays">
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="1" data-rule-weekday>
-                  <span>月曜日</span>
-                </label>
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="2" data-rule-weekday>
-                  <span>火曜日</span>
-                </label>
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="3" data-rule-weekday>
-                  <span>水曜日</span>
-                </label>
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="4" data-rule-weekday>
-                  <span>木曜日</span>
-                </label>
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="5" data-rule-weekday>
-                  <span>金曜日</span>
-                </label>
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="6" data-rule-weekday>
-                  <span>土曜日</span>
-                </label>
-                <label class="check-option">
-                  <input type="checkbox" name="weekdays" value="7" data-rule-weekday>
-                  <span>日曜日</span>
-                </label>
-              </div>
-            </fieldset>
+              <strong>通知対象</strong>
+              <p>土日・祝日、8:00〜13:00</p>
+            </section>
 
             <fieldset class="rule-fieldset">
               <legend>対象期間</legend>
@@ -246,53 +202,23 @@
               </div>
             </fieldset>
 
-            <fieldset class="rule-fieldset">
-              <legend>対象時間帯</legend>
-              <div class="field-grid">
-                <div class="field">
-                  <label for="notification-rule-start-time">開始時刻</label>
-                  <input
-                    id="notification-rule-start-time"
-                    name="start_time"
-                    type="time"
-                    value="08:00"
-                    step="1800"
-                    required
-                    data-rule-start-time
-                  >
-                </div>
-                <div class="field">
-                  <label for="notification-rule-end-time">終了時刻</label>
-                  <input
-                    id="notification-rule-end-time"
-                    name="end_time"
-                    type="time"
-                    value="13:00"
-                    step="1800"
-                    required
-                    data-rule-end-time
-                  >
-                </div>
-              </div>
-            </fieldset>
-
             <div class="field">
               <label for="notification-rule-minimum-duration">
-                最低連続時間（分）
+                希望する利用時間
               </label>
-              <input
+              <select
                 id="notification-rule-minimum-duration"
                 name="minimum_duration_minutes"
-                type="number"
-                value="60"
-                min="30"
-                max="720"
-                step="30"
-                inputmode="numeric"
                 required
                 data-rule-minimum-duration
               >
-              <p class="form-note">30〜720分の範囲で、30分単位で指定できます。</p>
+                <option value="60">1時間以上</option>
+                <option value="120" selected>2時間以上（おすすめ）</option>
+                <option value="180">3時間以上</option>
+                <option value="240">4時間以上</option>
+                <option value="300">5時間以上</option>
+              </select>
+              <p class="form-note">連続した空き時間で判定します。</p>
             </div>
 
             <label class="check-option check-option--enabled">
