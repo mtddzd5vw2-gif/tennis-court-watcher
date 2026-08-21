@@ -7,7 +7,7 @@
 
 2026-08-21時点でPhase 0〜3は完了している。
 Phase 1の退会もproduction acceptanceまで完了した。
-Phase 4の利用者別LINE通知以降は未実装である。
+Phase 4はaccount linkのDB基盤とLINE Login server-side境界までコード実装済みであり、My Page UI、webhook、利用者別LINE配信以降は未実装である。
 
 長期的な目的は[Project Vision](./PROJECT_VISION.md)、
 現在地・実装順序・完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
@@ -330,6 +330,8 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - 導入日、重複配信防止、監視、ロールバックを定める。
 - Supabase Authのメール認証を会員認証の正として維持し、LINE Login v2.1はログイン済み会員との連携にだけ使用する。LINE Login channelとMessaging API channelは同一providerへ作成する。
 - `line_account_links`は1会員1LINE account、1LINE account 1会員をDB制約で強制し、`line_link_sessions`はSHA-256のstate/nonce hashだけを10分間保持する。ブラウザはLINE user IDやlink sessionを参照・更新できず、本人かつactive会員にはRLS下で安全な状態列だけをcolumn-level Grantし、`SECURITY INVOKER` RPCも同じRLSへ従わせる。
+- LINE Login開始・callback・解除はEdge Functionへ集約する。開始・解除はSupabase JWTから本人を決定し、callbackは一回限りのstate、LINE authorization code、検証済みID token、nonce hashで認証する。callback URLへSupabase tokenを渡さず、LINE access/ID/refresh tokenを永続化しない。
+- callbackはLINE Login APIで友だち状態も確認し、未追加・block状態は`blocked`として保存する。user access tokenは処理後にbest-effortでrevokeし、通常ログへauthorization code、state、nonce、LINE user ID、tokenを出さない。
 
 ### 13.3 配信予算
 
