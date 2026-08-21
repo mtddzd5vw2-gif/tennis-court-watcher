@@ -170,6 +170,7 @@ def test_resend_report_uses_operational_recipient_and_idempotency() -> None:
     request = opener.requests[0]
     assert request.full_url == reporting.RESEND_EMAIL_ENDPOINT
     assert request.get_header("Authorization") == "Bearer resend-secret"
+    assert request.get_header("User-agent") == reporting.HTTP_USER_AGENT
     assert request.get_header("Idempotency-key") == (
         "tennis-court-watcher/line-usage-weekly/2026-08-22"
     )
@@ -275,6 +276,36 @@ def test_http_error_logs_only_safe_status_and_provider_code() -> None:
         "Resend report request failed (status=403, code=invalid_api_key)"
     )
     assert "sensitive provider details" not in str(captured.value)
+
+
+def test_non_json_http_error_is_classified_without_logging_body() -> None:
+    provider_error = urllib.error.HTTPError(
+        reporting.RESEND_EMAIL_ENDPOINT,
+        403,
+        "Forbidden",
+        {"Content-Type": "text/html; charset=UTF-8"},
+        BytesIO(b"<html>sensitive edge response</html>"),
+    )
+
+    def failing_opener(_request: Any, *, timeout: int) -> Any:
+        assert timeout > 0
+        raise provider_error
+
+    with pytest.raises(reporting.LineUsageReportError) as captured:
+        reporting.send_resend_report(
+            "resend-secret",
+            "operator@example.com",
+            reporting.RenderedReport("subject", "text", "<p>text</p>"),
+            checked_at=datetime(2026, 8, 22, 12, 7, tzinfo=JST),
+            warning=False,
+            warning_threshold=180,
+            opener=failing_opener,
+        )
+
+    assert str(captured.value) == (
+        "Resend report request failed (status=403, code=non_json_response)"
+    )
+    assert "sensitive edge response" not in str(captured.value)
 
 
 @pytest.mark.parametrize(

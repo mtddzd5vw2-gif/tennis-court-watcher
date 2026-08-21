@@ -24,6 +24,7 @@ RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails"
 REPORT_FROM = "Tennis Court Watcher <no-reply@email.tenniscourtwatcher.com>"
 REQUEST_TIMEOUT_SECONDS = 20
 MAX_RESPONSE_BYTES = 64 * 1024
+HTTP_USER_AGENT = "tennis-court-watcher-line-usage/1.0"
 JST = ZoneInfo("Asia/Tokyo")
 EMAIL_PATTERN = re.compile(
     r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
@@ -91,6 +92,14 @@ def _single_line_secret(value: str, name: str) -> str:
 def _http_error_summary(operation: str, error: urllib.error.HTTPError) -> str:
     status = error.code if isinstance(error.code, int) else "unknown"
     provider_code = "unknown"
+    content_type = ""
+    headers = getattr(error, "headers", None)
+    if headers is not None:
+        raw_content_type = headers.get("Content-Type", "")
+        if isinstance(raw_content_type, str):
+            content_type = raw_content_type.lower()
+    if content_type and "application/json" not in content_type:
+        provider_code = "non_json_response"
     try:
         response_body = error.read(MAX_RESPONSE_BYTES + 1)
         if (
@@ -398,6 +407,7 @@ def send_resend_report(
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Idempotency-Key": idempotency_key,
+            "User-Agent": HTTP_USER_AGENT,
         },
         method="POST",
     )
