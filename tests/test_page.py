@@ -77,6 +77,18 @@ def page_loader(browser: Browser):
             url = route.request.url
             if url == "http://pages.test/project/index.html":
                 route.fulfill(status=200, content_type="text/html", body=INDEX_HTML)
+            elif url == (
+                "http://pages.test/project/assets/images/"
+                "kagoshima-municipal-tennis-court.webp"
+            ):
+                route.fulfill(
+                    status=200,
+                    content_type="image/webp",
+                    path=str(
+                        ROOT
+                        / "assets/images/kagoshima-municipal-tennis-court.webp"
+                    ),
+                )
             elif url.startswith("http://pages.test/project/data/availability.json?"):
                 data_requests.append(url)
                 route.fulfill(
@@ -177,6 +189,28 @@ def test_top_page_has_static_account_link_without_auth_dependencies() -> None:
     ]
     assert all("supabase" not in source.lower() for source in script_sources)
     assert all("auth-config" not in source.lower() for source in script_sources)
+
+
+def test_top_page_has_responsive_municipal_court_hero() -> None:
+    soup = BeautifulSoup(INDEX_HTML, "html.parser")
+    hero = soup.find("figure", class_="court-hero")
+    image = hero.find("img")
+    asset = ROOT / image["src"]
+
+    assert hero.find(class_="court-hero__place").get_text(strip=True) == (
+        "鹿児島市営テニスコート"
+    )
+    assert hero.find(class_="court-hero__message").get_text(strip=True) == (
+        "空きを見つけて、コートへ出よう。"
+    )
+    assert image["alt"] == (
+        "青空の下、鹿児島市営テニスコートでテニスを楽しむ人たち"
+    )
+    assert (image["width"], image["height"]) == ("1200", "900")
+    assert image["decoding"] == "async"
+    assert image["fetchpriority"] == "high"
+    assert asset.is_file()
+    assert asset.stat().st_size <= 100_000
 
 
 def test_facility_and_total_availability_counts_are_correct(utils_page: Page) -> None:
