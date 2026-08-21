@@ -388,6 +388,20 @@ deno_version = 2
 [functions.delete-account]
 verify_jwt = true
 
+# A signed-in active member starts a one-time LINE Login account-link flow.
+# The Function independently resolves the member from the supplied JWT.
+[functions.start-line-account-link]
+verify_jwt = true
+
+# LINE redirects here without a Supabase JWT. One-time state/nonce hashes,
+# the authorization code, and LINE ID-token verification form the boundary.
+[functions.complete-line-account-link]
+verify_jwt = false
+
+# A signed-in active member explicitly confirms removal of the saved link.
+[functions.unlink-line-account]
+verify_jwt = true
+
 # Authentication is implemented inside this service-to-service worker with a
 # dedicated high-entropy secret. Gateway JWT verification is disabled so the
 # function does not depend on the legacy symmetric JWT secret.
