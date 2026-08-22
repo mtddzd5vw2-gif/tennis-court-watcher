@@ -19,8 +19,16 @@ active会員確認、state/nonceの一回限り消費、1会員1LINE・1LINE1会
 token endpoint、ID token verify endpoint、friendship endpointを使用し、検証後の
 user access tokenはbest-effortでrevokeしてDBへ保存しない。本番migration、Function
 secrets、deploy、HTTP境界acceptanceは完了した。My Page UIも実装済みで、スマホでの
-正方向acceptanceは未実施である。導入順は
+正方向acceptanceは2026-08-21に完了した。導入順は
 [LINE account link Runbook](./PHASE4_LINE_ACCOUNT_LINK_RUNBOOK.md)を正とする。
+
+同日に次の前方段階として、署名検証済みMessaging API webhook、冪等なblock/unfollow反映、
+既存の通知条件照合と共通queueを使う`line` channel enqueue、LINE delivery worker、
+retry、送信直前の180通guardを実装した。既存email workerには明示的な`email` channel
+条件を追加し、LINE messageをclaimできないようにした。実装と隔離ローカルDBでの
+migration・pgTAP・advisor・lintは確認済みである。本番migration、Function deploy、
+webhook登録、shadow/canary/production acceptanceは未実施であり、すべて初期OFFとする。
+導入順と停止手順は[LINE Notification Rollout](./PHASE4_LINE_NOTIFICATION_ROLLOUT.md)を正とする。
 
 ## 2. 採用方式
 
@@ -135,6 +143,8 @@ LINE user IDは個人情報に準じ、GitHub、Actions log、Artifact、公開P
 - follow/unfollow/block関連eventは連携状態へ反映する。
 - unknown user、未連携user、失効eventは情報を返さず安全に無視する。
 - raw payload、message本文、LINE user IDをapplication logへ保存しない。
+- webhook event ledgerにはevent ID、event種別、発生時刻だけを90日保持し、
+  LINE user IDとraw payloadは保存しない。
 
 ## 7. UX
 
@@ -154,14 +164,14 @@ LINE display name、profile image、status message、email addressは取得し�
 1. LINE provider、公式アカウント、Messaging API channel、LINE Login channelを同一providerに準備する。
 2. schema、RLS、Grant、link session、account linkのmigrationを作る。— 完了
 3. LINE Login開始・callback・解除Edge Functionを実装する。— 本番反映・HTTP境界確認完了
-4. My Pageへ連携状態と操作UIを追加する。— 実装完了、スマホacceptance待ち
-5. webhook署名検証、冪等化、block/unfollow反映を実装する。
-6. 月間使用量の週次報告と180通警告を有効化する。
-7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。
-8. dry-runと架空利用者によるcross-user isolationを検証する。
-9. 管理者を含むβ会員を同じ基盤で連携する。
-10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。
-11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。
+4. My Pageへ連携状態と操作UIを追加する。— 実装・本番スマホacceptance完了
+5. webhook署名検証、冪等化、block/unfollow反映を実装する。— 実装・隔離環境検証完了、本番導入待ち
+6. 月間使用量の週次報告と180通警告を有効化する。— 完了
+7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。— 実装・隔離環境検証完了、本番導入待ち
+8. dry-runと架空利用者によるcross-user isolationを検証する。— shadow no-write、cross-user、channel分離を隔離環境で確認済み
+9. 管理者を含むβ会員を同じ基盤で連携する。— 単一会員canary用境界まで実装、本番確認待ち
+10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。— shadow・単一会員まで実装、限定β allowlistは次段階
+11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。— 未実施
 
 ## 9. 完了条件
 

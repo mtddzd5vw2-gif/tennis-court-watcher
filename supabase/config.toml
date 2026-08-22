@@ -402,10 +402,20 @@ verify_jwt = false
 [functions.unlink-line-account]
 verify_jwt = true
 
+# LINE authenticates this public webhook with HMAC-SHA256 over the untouched
+# request body. The Function verifies the signature before JSON parsing.
+[functions.line-messaging-webhook]
+verify_jwt = false
+
 # Authentication is implemented inside this service-to-service worker with a
 # dedicated high-entropy secret. Gateway JWT verification is disabled so the
 # function does not depend on the legacy symmetric JWT secret.
 [functions.dispatch-email-notifications]
+verify_jwt = false
+
+# Authentication is implemented inside this service-to-service LINE worker
+# with a dedicated high-entropy secret. The Messaging API token stays here.
+[functions.dispatch-line-notifications]
 verify_jwt = false
 
 # Resend authenticates webhook requests with Svix signatures over the raw body.

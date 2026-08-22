@@ -18,6 +18,7 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 - [Service Specification](docs/SERVICE_SPECIFICATION.md)
 - [Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)
 - [Phase 4 LINE Notification Design](docs/PHASE4_LINE_NOTIFICATION_DESIGN.md)
+- [Phase 4 LINE Notification Rollout](docs/PHASE4_LINE_NOTIFICATION_ROLLOUT.md)
 - [Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)
 - [Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)
 - [Auth Email Operations](docs/AUTH_EMAIL_OPERATIONS.md)
@@ -68,7 +69,7 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 
 PKCEのcode verifierはリンクを要求したブラウザ側に保存されるため、マジックリンクは原則としてログイン操作を開始した同じブラウザで開く必要があります。別端末・別ブラウザで開いて認証に失敗した場合は、利用するブラウザでログイン画面から再送してください。
 
-`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。`20260821034956_finalize_terms_version.sql` は正式規約 `2026-08-21` をcurrentへ切り替え、過去の同意履歴を保持したままactive会員へ再同意を要求します。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4はLINE account linkのDB基盤とserver-side境界を本番反映し、My Pageの連携・状態・解除UIまで実装済みです。利用者別LINE配信と課金は未実装です。
+`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。`20260821034956_finalize_terms_version.sql` は正式規約 `2026-08-21` をcurrentへ切り替え、過去の同意履歴を保持したままactive会員へ再同意を要求します。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4はLINE account linkのDB基盤とserver-side境界を本番反映し、My Pageの連携・状態・解除UIまで実装済みで、スマホ実機の正方向acceptanceも完了しました。利用者別LINE配信のqueue・webhook・workerは初期OFFで実装し、隔離したローカル環境で検証済みです。本番migration・Function deploy・段階有効化は未実施です。課金は未実装です。
 
 正式な現行規約版は `2026-08-21`、発効日は2026-08-21です。運営者はグランドスラム（鹿児島市内テニスサークル）で、問い合わせ先は法務ページに簡易難読化して表示します。重要な規約改定では新しい版を追加し、過去の同意履歴を保持したまま再同意を求めます。
 
@@ -83,7 +84,7 @@ PKCEのcode verifierはリンクを要求したブラウザ側に保存される
 
 法務ページは2026-08-21に正式化し、運営者、問い合わせ窓口、版番号、発効日、取得情報、利用目的、委託先、第三者提供、90日通知データ保持、退会時削除、開示等請求、規約改定時の再同意を確定しました。詳細は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
 
-Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限し、`20260821022637_add_configurable_notification_targets.sql` は祝日選択と監視範囲内の時間帯選択を追加します。DB triggerが最終的な件数強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4はLINE account linkの基盤を段階実装中で、利用者別LINE配信は将来機能です。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
+Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限し、`20260821022637_add_configurable_notification_targets.sql` は祝日選択と監視範囲内の時間帯選択を追加します。DB triggerが最終的な件数強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4はLINE account linkを本番反映し、利用者別LINE配信の安全な実装を初期OFFで追加しています。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 
 照合対象は、日別取得結果が `success` で、枠の `status` が `available` のデータだけです。施設、選択した土曜・日曜または祝日、任意の日付範囲を確認し、通知時間帯と空き時間帯の実際の重複分数が最低連続時間以上なら一致します。同じ利用者の複数条件が同じ `slot_id` へ一致しても利用者・枠の候補は1件にまとめ、別利用者は別候補にします。
 
@@ -345,9 +346,9 @@ Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを
 
 Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、Cloudflare Workerの公開confirmation/RFC 8058 endpoint、body-onlyのSupabase unsubscribe Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。Supabase hosted GETとInvocation Logsの実測を受けて直接Supabase URLを棄却し、`unsubscribe.tenniscourtwatcher.com`のCloudflare Workerを公開入口としました。production rolloutとacceptanceは2026-08-18に完了し、本文footerは認証済みAccount UI、RFC 8058 capabilityはheadersだけに分離しています。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。必須log boundary、maintenance guard、rollout順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
 
-Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。Phase 4では会員とLINEユーザーを安全に紐づけるDB基盤、LINE Login開始・callback・解除のserver-side境界、My Pageの安全な状態・操作UIまで実装しました。利用者別LINE配信workerはまだ有効化しません。
+Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。Phase 4では会員とLINEユーザーを安全に紐づけるDB基盤、LINE Login開始・callback・解除のserver-side境界、My Pageの安全な状態・操作UIを本番反映し、スマホ実機の正方向acceptanceも完了しました。利用者別LINE配信の署名検証webhook、channel分離queue、worker、retry、180通guardは初期OFFで実装済みですが、本番ではまだ有効化しません。
 
-手動実行の `dry_run=true` では、取得とArtifact生成は行いますが、リポジトリ内データの更新、commit、push、Pagesデプロイ、email enqueue/dispatchは行いません。
+手動実行の `dry_run=true` では、取得とArtifact生成は行いますが、リポジトリ内データの更新、commit、push、Pagesデプロイ、email/LINE enqueue・dispatchは行いません。
 
 ### Actions Variables
 
@@ -357,21 +358,25 @@ Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 
 | `ENABLE_NOTIFICATION_MATCHING` | `true` のときだけ通知条件照合を実行 |
 | `ENABLE_USER_EMAIL_ENQUEUE` | `true` のときだけ利用者別メール候補をqueueへ登録 |
 | `ENABLE_USER_EMAIL_DISPATCH` | `true` のときだけemail delivery workerを実行 |
+| `ENABLE_USER_LINE_ENQUEUE` | `true` のときだけLINE候補のshadow評価またはqueue登録を実行 |
+| `ENABLE_USER_LINE_DISPATCH` | `true` のときだけLINE delivery workerを呼び出す。shadow中は実行不可 |
+| `LINE_NOTIFICATION_SHADOW_MODE` | 初期値`true`。候補を評価して集計だけ返し、queueへ書き込まない |
+| `LINE_NOTIFICATION_ALLOW_ALL` | 単一会員canary後に明示的に`true`へするまで全会員enqueueを拒否 |
 | `ENABLE_LINE_USAGE_REPORTS` | `true` のときだけLINE月間使用量の定期確認と報告を実行 |
 | `LINE_USAGE_WARNING_THRESHOLD` | LINE Pushを止める月間運用上限。初期値は`180` |
 | `SUPABASE_URL` | Supabase Project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | ブラウザ公開用のpublishable key |
 | `AUTH_CALLBACK_URL` | Supabaseに許可登録した本番callback URL |
 
-`SUPABASE_SERVICE_ROLE_KEY` はmatching/enqueue stepだけ、`EMAIL_DELIVERY_WORKER_SECRET` はdispatch stepだけへ渡します。3つの通知stepは `continue-on-error: true` で、失敗してもavailability Artifact・commit・Pages公開を妨げません。
+`SUPABASE_SERVICE_ROLE_KEY` はmatching/enqueue stepだけ、`EMAIL_DELIVERY_WORKER_SECRET` と `LINE_DELIVERY_WORKER_SECRET` は各dispatch stepだけへ渡します。単一canaryのSupabase Auth UUIDは`LINE_NOTIFICATION_CANARY_USER_ID` GitHub Secretに保存します。LINE Messaging APIのtokenはSupabase Edge Function secretに留め、通常のavailability workflowへ渡しません。各通知stepは `continue-on-error: true` で、失敗してもavailability Artifact・commit・Pages公開を妨げません。
 
 LINE使用量報告は `.github/workflows/report-line-usage.yml` が毎日12:07 JSTに
 公式APIの月間上限と使用済み通数を確認します。土曜は週次メールを送り、
 180通到達時は当月1回だけ警告します。`LINE_CHANNEL_ACCESS_TOKEN`、
 `LINE_USAGE_REPORT_RESEND_API_KEY`、`LINE_USAGE_REPORT_TO` はGitHub Secretsへ保存し、
 repositoryやlogへ値を出しません。月間使用量にはLINE Official Account Managerからの
-配信も含まれます。利用者別LINE workerは実装時に同じ使用量を送信直前にも確認し、
-180通以降を既存email channelへフォールバックします。
+配信も含まれます。利用者別LINE workerも同じ使用量を送信前に確認し、
+180通到達後はLINEを停止します。email channelは独立して通常どおり処理されます。
 
 ## GitHub ActionsとPages
 
@@ -389,10 +394,11 @@ Pages画面の「最終更新」は、`availability.json` 全体が生成され�
 3. `scripts/scrape.py` で全施設を取得し、availabilityとスナップショットを更新
 4. `ENABLE_NOTIFICATION_MATCHING=true` の場合だけ、実行時JSONとservice-role専用RPCで通知条件を照合
 5. 各有効化フラグとdry-run gateに従って利用者別メールをenqueue/dispatch
-6. スナップショット、実行時availability、`index.html`、Phase 1静的画面と共通assetsを `reservation-page-snapshots` Artifactとして常時保存。match詳細は含めない
-7. dry-runでなければ意味のある `data/availability.json` の変更だけをコミット
-8. 別ジョブがRepository Variablesから `_site/assets/config/auth-config.js` を生成
-9. Pages専用権限で `index.html`、最新JSON、認証画面、法務画面、共通assetsをデプロイ
+6. LINEは独立したフラグに従ってshadow評価またはenqueue/dispatchし、初期状態ではすべてOFF
+7. スナップショット、実行時availability、`index.html`、Phase 1静的画面と共通assetsを `reservation-page-snapshots` Artifactとして常時保存。match詳細は含めない
+8. dry-runでなければ意味のある `data/availability.json` の変更だけをコミット
+9. 別ジョブがRepository Variablesから `_site/assets/config/auth-config.js` を生成
+10. Pages専用権限で `index.html`、最新JSON、認証画面、法務画面、共通assetsをデプロイ
 
 取得ジョブだけが `contents: write`、Pagesジョブだけが `pages: write` と `id-token: write` を持ちます。dry-runではcommitとPagesジョブを実行しません。一部施設の取得失敗は日別のエラーとしてJSONへ記録し、他施設の処理を継続します。初回実行前に、GitHubリポジトリの `Settings` → `Pages` でSourceを `GitHub Actions` に設定してください。
 
@@ -408,7 +414,7 @@ Launch Readiness Gateは完了し、Phase 4へ進みます。
 4. GitHub Actions外部ActionのコミットSHA固定 — 完了（PR #56）
 5. Monitoring Policyと監視範囲外条件のUI表示 — 完了（PR #57）
 6. 鹿児島βで使用する運用指標の決定 — 完了（Launch Readiness Review）
-7. Phase 4の利用者別LINE通知 — account link基盤・server-side境界・My Page UIを実装、次はスマホacceptanceとwebhook
+7. Phase 4の利用者別LINE通知 — account linkの本番・スマホacceptance完了。webhook・queue・workerは初期OFFで実装・隔離環境検証済み、次は本番へ段階導入
 
 取得元の利用許可は取得済みである。アクセス負荷とβ運用指標は
 [Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)を参照する。
@@ -416,7 +422,7 @@ Launch Readiness Gateは完了し、Phase 4へ進みます。
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、退会処理、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。Phase 4はaccount linkのDB基盤とLINE Login server-side境界を本番反映し、My Page UIまで実装済みです。スマホでの正方向acceptance、webhook、利用者別LINE配信は未完了です。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、退会処理、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。Phase 4はaccount linkとスマホ実機acceptanceまで完了し、webhook・利用者別LINE配信は初期OFFで実装・ローカル検証済みです。本番migration・Function deploy・段階有効化は未完了です。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。
