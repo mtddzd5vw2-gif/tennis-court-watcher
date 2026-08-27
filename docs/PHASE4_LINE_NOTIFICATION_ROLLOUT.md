@@ -17,11 +17,16 @@
 - 本番migration、2 Edge Functions、必要なdelivery secretの反映
 - `mie.masa@me.com`だけを対象にした固定文面queue canary 1通の実機受信
 - LINE API `accepted`、attempt 1、retry 0、duplicate 0、使用量19→20、email副作用0
+- Messaging API channel secretと既存GAS URLをSupabase secretへ反映
+- LINE WebhookをSupabase署名検証bridgeへ切り替え、空payload preflight、LINE Verify、
+  Use webhook、Webhook redeliveryを有効化
+- 既存GASへraw bodyと署名を保持した転送が2xxになることをpreflightで確認
+- `line-webhook-retention-cleanup`を03:22 JSTの日次cronとして作成し、manual zero-deleteを確認
 
-LINE delivery gateはcanary後にOFFへ戻した。残る主作業は、Messaging API channelで
-稼働中の別用途Google Apps ScriptをSupabase署名検証webhookから安全にfan-outし、
-LINE Developers Consoleの単一Webhook URLを切り替えることである。限定βまたは全会員向け
-deliveryは未開始であり、提供中と表示しない。
+LINE delivery gateはcanary後にOFFへ戻した。既存GASの実メッセージ応答確認は、用途上の
+重要度が低いという所有者判断により2026-08-27に省略した。限定βまたは全会員向けdeliveryは
+未開始であり、提供中と表示しない。次はPR #68をmainへ統合できる状態に保ったままshadow
+no-writeを観測し、複数UUIDのserver-side allowlistを別の前方変更として実装する。
 
 ## 2. 変更しない境界
 
@@ -172,9 +177,16 @@ gh variable set ENABLE_USER_LINE_ENQUEUE --body "true"
 gh variable set LINE_NOTIFICATION_SHADOW_MODE --body "true"
 gh variable set ENABLE_USER_LINE_DISPATCH --body "false"
 gh variable set LINE_NOTIFICATION_ALLOW_ALL --body "false"
+
+gh workflow run update-availability.yml `
+  --ref feature/user-line-notifications `
+  -f dry_run=true `
+  -f line_shadow_only=true
 ```
 
-条件一致がある通常runを1回観察する。Actionsには件数集計だけが出ること、
+`line_shadow_only=true`はLINE enqueueへ渡すshadow modeを強制し、email enqueue/dispatch、
+LINE dispatch、availability commit、Pages deployを抑止する。PRのmerge前でもこの手動runで
+条件一致を1回観察できる。Actionsには件数集計だけが出ること、
 `notification_messages`と`notification_delivery_items`へ`channel='line'`の新規行が
 作られないことを確認する。
 
@@ -247,7 +259,9 @@ DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き�
 - 共通の`cleanup_email_notification_history(1000)`はchannelに依存せず、既存の日次cronで
   90日超の完了済みLINE message/delivery itemも安全条件下でcleanupする。
 - `cleanup_line_webhook_events(1000)`は90日超のwebhook event ledgerをbounded削除する。
-  本番導入時に既存retention cronへ追加し、manual zero-deleteと初回成功を確認する。
+  2026-08-27にmanual zero-deleteを確認し、既存email cleanupを変更せず障害範囲を分離した
+  `line-webhook-retention-cleanup`を毎日03:22 JST（`22 18 * * *`）に作成した。
+  cronの初回実行結果は翌日以降に`cron.job_run_details`で確認する。
 - 通常ログはcandidate、eligible、claimed、accepted、retry、failure、cancelled、quotaの
   集計だけとし、会員UUID、LINE user ID、空き枠payload、tokenを出さない。
 - 180通到達時はworkerがclaim前に停止する。email channelは独立して継続する。

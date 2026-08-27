@@ -1,5 +1,5 @@
 name: Update tennis availability
-run-name: Update tennis availability [${{ github.event_name == 'schedule' && 'scheduled-live' || inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]
+run-name: Update tennis availability [${{ github.event_name == 'schedule' && 'scheduled-live' || inputs.line_shadow_only && 'manual-line-shadow' || inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]
 
 on:
   workflow_dispatch:
@@ -8,6 +8,10 @@ on:
         description: Acquire data and artifacts without commit, push, or Pages deployment
         type: boolean
         default: true
+      line_shadow_only:
+        description: Evaluate LINE candidates in forced shadow mode without delivery or repository writes
+        type: boolean
+        default: false
   schedule:
     # JST 07:07〜23:37 の30分おき（GitHub ActionsのcronはUTC）
     - cron: "7,37 0-14,22-23 * * *"
@@ -33,13 +37,14 @@ jobs:
       source_sha: ${{ steps.source-revision.outputs.sha }}
     env:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+      LINE_SHADOW_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.line_shadow_only || false }}
 
     steps:
       - name: Determine execution mode
         id: execution-mode
         shell: bash
         run: |
-          if [[ "${DRY_RUN}" == "true" ]]; then
+          if [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then
             echo "deploy_pages=false" >> "${GITHUB_OUTPUT}"
           else
             echo "deploy_pages=true" >> "${GITHUB_OUTPUT}"
@@ -51,7 +56,7 @@ jobs:
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
             echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
-          elif [[ "${DRY_RUN}" == "true" ]]; then
+          elif [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then
             echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
           else
             echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
@@ -98,6 +103,7 @@ jobs:
         if: >-
           vars.ENABLE_NOTIFICATION_MATCHING == 'true' &&
           vars.ENABLE_USER_EMAIL_ENQUEUE == 'true' &&
+          env.LINE_SHADOW_ONLY != 'true' &&
           env.DRY_RUN != 'true'
         continue-on-error: true
         env:
@@ -110,6 +116,7 @@ jobs:
       - name: Dispatch user email notifications
         if: >-
           vars.ENABLE_USER_EMAIL_DISPATCH == 'true' &&
+          env.LINE_SHADOW_ONLY != 'true' &&
           env.DRY_RUN != 'true'
         continue-on-error: true
         env:
@@ -121,12 +128,12 @@ jobs:
         if: >-
           vars.ENABLE_NOTIFICATION_MATCHING == 'true' &&
           vars.ENABLE_USER_LINE_ENQUEUE == 'true' &&
-          env.DRY_RUN != 'true'
+          (env.DRY_RUN != 'true' || env.LINE_SHADOW_ONLY == 'true')
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          LINE_NOTIFICATION_SHADOW_MODE: ${{ vars.LINE_NOTIFICATION_SHADOW_MODE || 'true' }}
+          LINE_NOTIFICATION_SHADOW_MODE: ${{ env.LINE_SHADOW_ONLY == 'true' && 'true' || vars.LINE_NOTIFICATION_SHADOW_MODE || 'true' }}
           LINE_NOTIFICATION_CANARY_USER_ID: ${{ secrets.LINE_NOTIFICATION_CANARY_USER_ID }}
           LINE_NOTIFICATION_ALLOW_ALL: ${{ vars.LINE_NOTIFICATION_ALLOW_ALL || 'false' }}
         run: >-
@@ -137,6 +144,7 @@ jobs:
         if: >-
           vars.ENABLE_USER_LINE_DISPATCH == 'true' &&
           vars.LINE_NOTIFICATION_SHADOW_MODE == 'false' &&
+          env.LINE_SHADOW_ONLY != 'true' &&
           env.DRY_RUN != 'true'
         continue-on-error: true
         env:
@@ -161,7 +169,7 @@ jobs:
           retention-days: 7
 
       - name: Commit changed availability
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.LINE_SHADOW_ONLY != 'true'
         shell: bash
         run: |
           if git diff --quiet -- data/availability.json; then
