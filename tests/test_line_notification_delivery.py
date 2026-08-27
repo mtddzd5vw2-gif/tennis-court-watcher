@@ -186,6 +186,19 @@ def test_webhook_verifies_raw_signature_before_json_and_never_logs_identity() ->
     assert 'crypto.subtle.importKey(\n    "raw"' in helpers
     assert 'name: "HMAC", hash: "SHA-256"' in helpers
     assert 'supabase.rpc("record_line_webhook_events"' in index
+    assert 'Deno.env.get(name)' in index
+    assert '"x-line-signature": signature' in index
+    assert "forwardedBody.set(rawBody)" in index
+    assert "body: forwardedBody.buffer" in index
+    assert 'redirect: "follow"' in index
+    assert 'LINE_WEBHOOK_BRIDGE_ENABLED' in helpers
+    assert 'LINE_LEGACY_WEBHOOK_URL' in helpers
+    assert 'url.hostname !== "script.google.com"' in helpers
+    assert helpers.index(
+        "result = await dependencies.recordEvents("
+    ) < helpers.index(
+        "forwardLegacyWebhook!("
+    )
     assert "console." not in helpers
     assert "console." not in index
     assert "[functions.line-messaging-webhook]\nverify_jwt = false" in config

@@ -403,7 +403,8 @@ verify_jwt = false
 verify_jwt = true
 
 # LINE authenticates this public webhook with HMAC-SHA256 over the untouched
-# request body. The Function verifies the signature before JSON parsing.
+# request body. The Function verifies the signature before JSON parsing, then
+# can pass the untouched body and signature through to the existing Apps Script.
 [functions.line-messaging-webhook]
 verify_jwt = false
 

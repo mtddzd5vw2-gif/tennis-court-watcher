@@ -23,6 +23,11 @@ export interface LineWebhookDependencies {
     serviceRoleKey: string,
     events: NormalizedLineWebhookEvent[],
   ): Promise<RecordLineWebhookEventsResult>;
+  forwardLegacyWebhook?(
+    url: string,
+    rawBody: Uint8Array,
+    signature: string,
+  ): Promise<boolean>;
   now?(): number;
 }
 
@@ -31,8 +36,30 @@ const MAX_EVENTS = 100;
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,255}$/;
 const LINE_USER_ID_PATTERN = /^U[0-9a-f]{32}$/;
-const SUPABASE_PROJECT_URL_PATTERN =
-  /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
+const SUPABASE_PROJECT_URL_PATTERN = /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
+const LEGACY_WEBHOOK_PATH_PATTERN = /^\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+
+export function normalizeLegacyWebhookUrl(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "script.google.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    !LEGACY_WEBHOOK_PATH_PATTERN.test(url.pathname)
+  ) {
+    return null;
+  }
+  return url.toString();
+}
 
 export async function verifyLineWebhookSignature(
   rawBody: Uint8Array,
@@ -116,13 +143,27 @@ export function createLineWebhookHandler(
       return response(413, { error: "payload_too_large" });
     }
 
-    const channelSecret = dependencies.getEnv("LINE_MESSAGING_CHANNEL_SECRET") ?? "";
+    const channelSecret =
+      dependencies.getEnv("LINE_MESSAGING_CHANNEL_SECRET") ?? "";
     const supabaseUrl = dependencies.getEnv("SUPABASE_URL") ?? "";
-    const serviceRoleKey = dependencies.getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const serviceRoleKey = dependencies.getEnv("SUPABASE_SERVICE_ROLE_KEY") ??
+      "";
+    const bridgeEnabledValue =
+      dependencies.getEnv("LINE_WEBHOOK_BRIDGE_ENABLED") ?? "false";
+    const bridgeEnabled = bridgeEnabledValue === "true";
+    const legacyWebhookUrl = bridgeEnabled
+      ? normalizeLegacyWebhookUrl(
+        dependencies.getEnv("LINE_LEGACY_WEBHOOK_URL") ?? "",
+      )
+      : null;
     if (
       channelSecret.length < 16 ||
       !SUPABASE_PROJECT_URL_PATTERN.test(supabaseUrl) ||
-      serviceRoleKey.trim().length === 0
+      serviceRoleKey.trim().length === 0 ||
+      (bridgeEnabledValue !== "true" && bridgeEnabledValue !== "false") ||
+      (bridgeEnabled &&
+        (legacyWebhookUrl === null ||
+          dependencies.forwardLegacyWebhook === undefined))
     ) {
       return response(503, { error: "service_unavailable" });
     }
@@ -138,7 +179,9 @@ export function createLineWebhookHandler(
     }
 
     const signature = request.headers.get("x-line-signature") ?? "";
-    if (!(await verifyLineWebhookSignature(rawBody, channelSecret, signature))) {
+    if (
+      !(await verifyLineWebhookSignature(rawBody, channelSecret, signature))
+    ) {
       return response(401, { error: "invalid_signature" });
     }
 
@@ -153,23 +196,39 @@ export function createLineWebhookHandler(
       return response(400, { error: "invalid_payload" });
     }
 
-    if (events.length === 0) {
-      return response(200, emptyMetrics());
+    let metrics = emptyMetrics();
+    if (events.length > 0) {
+      let result: RecordLineWebhookEventsResult;
+      try {
+        result = await dependencies.recordEvents(
+          supabaseUrl,
+          serviceRoleKey,
+          events,
+        );
+      } catch {
+        return response(500, { error: "processing_failed" });
+      }
+      const normalized = normalizeMetrics(result.data);
+      if (result.error !== null || normalized === null) {
+        return response(500, { error: "processing_failed" });
+      }
+      metrics = normalized;
     }
 
-    let result: RecordLineWebhookEventsResult;
-    try {
-      result = await dependencies.recordEvents(
-        supabaseUrl,
-        serviceRoleKey,
-        events,
-      );
-    } catch {
-      return response(500, { error: "processing_failed" });
-    }
-    const metrics = normalizeMetrics(result.data);
-    if (result.error !== null || metrics === null) {
-      return response(500, { error: "processing_failed" });
+    if (bridgeEnabled && legacyWebhookUrl !== null) {
+      let forwarded: boolean;
+      try {
+        forwarded = await dependencies.forwardLegacyWebhook!(
+          legacyWebhookUrl,
+          rawBody,
+          signature,
+        );
+      } catch {
+        forwarded = false;
+      }
+      if (!forwarded) {
+        return response(502, { error: "legacy_bridge_failed" });
+      }
     }
     return response(200, metrics);
   };

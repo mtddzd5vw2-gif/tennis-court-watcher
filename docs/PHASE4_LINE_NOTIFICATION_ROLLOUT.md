@@ -2,7 +2,7 @@
 
 ## 1. 現在地
 
-2026-08-21時点で、次の実装と隔離ローカル環境での検証が完了している。
+2026-08-27時点で、次の実装と本番単一会員canaryまで完了している。
 
 - raw bodyの署名をJSON parse前に検証するMessaging API webhook
 - webhook event IDによる重複排除と、順序逆転に耐えるfollow/unfollow反映
@@ -14,10 +14,14 @@
 - 空き枠を捏造しない、固定文面の共通queue canary test job
 - 架空利用者を使ったcross-user isolation、RLS/Grant、rollback、retentionのpgTAP
 - 全migrationの再適用、Supabase database lint、security/performance advisor
+- 本番migration、2 Edge Functions、必要なdelivery secretの反映
+- `mie.masa@me.com`だけを対象にした固定文面queue canary 1通の実機受信
+- LINE API `accepted`、attempt 1、retry 0、duplicate 0、使用量19→20、email副作用0
 
-本番Supabaseへのmigration、Edge Function deploy、LINE Developers Consoleのwebhook登録、
-shadow/canary、実配信acceptanceは未実施である。完了するまで利用者向けLINE配信を
-提供中と表示しない。
+LINE delivery gateはcanary後にOFFへ戻した。残る主作業は、Messaging API channelで
+稼働中の別用途Google Apps ScriptをSupabase署名検証webhookから安全にfan-outし、
+LINE Developers Consoleの単一Webhook URLを切り替えることである。限定βまたは全会員向け
+deliveryは未開始であり、提供中と表示しない。
 
 ## 2. 変更しない境界
 
@@ -56,6 +60,8 @@ canaryも明示的な全会員許可もない場合に失敗する。`allow all`
 | 名前 | 用途 |
 | --- | --- |
 | `LINE_MESSAGING_CHANNEL_SECRET` | Messaging API channelのwebhook署名検証。LINE Login channel secretとは別物 |
+| `LINE_WEBHOOK_BRIDGE_ENABLED` | 既存GASへのpass-throughを厳密な`true`/`false`で制御。切替前は`false` |
+| `LINE_LEGACY_WEBHOOK_URL` | 既存GAS deployment URL。`script.google.com/macros/s/.../exec`だけ許可 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | Messaging API Pushと月間使用量取得 |
 | `LINE_DELIVERY_WORKER_SECRET` | GitHub ActionsからLINE workerだけを呼び出す高entropy bearer secret |
 | `LINE_DELIVERY_PAYLOAD_HMAC_KEY` | recipientとpayloadの整合性fingerprint。worker secretと別の値 |
@@ -119,6 +125,7 @@ LINE_NOTIFICATION_CANARY_USER_ID=<Supabase Auth UUID>
 LINE_MONTHLY_PUSH_LIMIT=180
 LINE_NOTIFICATION_ALLOW_ALL=false
 ENABLE_USER_LINE_NOTIFICATIONS=false
+LINE_WEBHOOK_BRIDGE_ENABLED=false
 ```
 
 秘密値をterminal historyへ直接書かず、env fileから設定する。
@@ -134,15 +141,24 @@ Function secret名だけが存在し値を表示しないことを確認する�
 
 ### 5.3 LINE webhook登録
 
-LINE Developers ConsoleのMessaging API channelで、次をwebhook URLへ設定する。
+既存GASを直接上書きしない。現在のGAS URLを`LINE_LEGACY_WEBHOOK_URL`へ保存し、
+`LINE_MESSAGING_CHANNEL_SECRET`を設定する。bridgeを`true`にしてFunctionをdeployした後、
+LINEから受信したものと同じ形式の署名付き空payloadをFunctionへ直接送り、Supabaseの
+署名検証とGASの2xxを同時に確認する。raw body、signature、secret、GAS URLをログへ出さない。
+
+preflight成功後に限り、LINE Developers ConsoleのMessaging API channelで次をWebhook URLへ設定する。
 
 ```text
 https://<project-ref>.supabase.co/functions/v1/line-messaging-webhook
 ```
 
-Verifyを成功させ、Use webhookを有効にする。Webhook redeliveryも有効にする。
+Verifyを成功させ、Use webhookを有効のまま維持し、Webhook redeliveryを有効にする。
+既存GASの無害なコマンドを1回送り、従来応答が変わらないことを実機確認する。その後、
 block/unfollowとfollow/block解除をテストし、連携状態だけが反映されることを確認する。
-raw payload、LINE user ID、signature、tokenをログへ出さない。
+
+bridgeが2xxを返さない、既存GAS応答が変わる、LINE側error statisticsが増える場合は、
+LINE Developers ConsoleのWebhook URLを直前のGAS URLへ戻す。FunctionやDBを巻き戻さず、
+bridge secretを`false`に戻して前方修正する。
 
 ここまで完了したら`ENABLE_SCHEDULED_RUNS`を作業前の値へ戻す。LINEの4 Variableは
 初期値のままなので、利用者別LINE Pushは発生しない。
@@ -221,7 +237,8 @@ select * from public.cancel_line_notification_backlog();
 再実行せず、残るleaseが失効してからもう一度確認する。
 
 webhookはblock/unfollow状態を安全に保つため、Push停止時も原則として維持する。
-webhook自体に問題がある場合だけLINE Developers Consoleで停止する。
+bridge切替中のwebhook自体に問題がある場合は停止ではなく、まずWebhook URLを直前の
+GAS URLへ戻して既存Botを保護する。
 
 DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き戻さない。
 
@@ -238,6 +255,9 @@ DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き�
 ## 9. Production acceptance完了条件
 
 - webhook署名不正を拒否し、duplicate replayがno-opになる
+- 空のVerify payloadとmessage-only eventが同じraw body・署名で既存GASへ届く
+- GASの2xxだけを成功とし、timeout/network/非2xxでLINEへ5xxを返す
+- bridge切替後も既存GASの実機応答が変わらず、error statisticsが増えない
 - follow/unfollowの順序逆転で古いeventが現在状態を上書きしない
 - shadowでLINE queueへ書き込まない
 - 単一canary以外へenqueue・Pushしない

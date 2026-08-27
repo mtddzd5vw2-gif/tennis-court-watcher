@@ -69,7 +69,7 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 
 PKCEのcode verifierはリンクを要求したブラウザ側に保存されるため、マジックリンクは原則としてログイン操作を開始した同じブラウザで開く必要があります。別端末・別ブラウザで開いて認証に失敗した場合は、利用するブラウザでログイン画面から再送してください。
 
-`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。`20260821034956_finalize_terms_version.sql` は正式規約 `2026-08-21` をcurrentへ切り替え、過去の同意履歴を保持したままactive会員へ再同意を要求します。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4はLINE account linkのDB基盤とserver-side境界を本番反映し、My Pageの連携・状態・解除UIまで実装済みで、スマホ実機の正方向acceptanceも完了しました。利用者別LINE配信のqueue・webhook・workerは初期OFFで実装し、隔離したローカル環境で検証済みです。本番migration・Function deploy・段階有効化は未実施です。課金は未実装です。
+`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。`20260821034956_finalize_terms_version.sql` は正式規約 `2026-08-21` をcurrentへ切り替え、過去の同意履歴を保持したままactive会員へ再同意を要求します。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4はLINE account link、利用者別queue/worker、本番単一会員canaryまで完了しました。Messaging API webhookは既存Google Apps Scriptを維持する署名済みpass-through bridgeを追加し、切替acceptanceを進めています。課金は未実装です。
 
 正式な現行規約版は `2026-08-21`、発効日は2026-08-21です。運営者はグランドスラム（鹿児島市内テニスサークル）で、問い合わせ先は法務ページに簡易難読化して表示します。重要な規約改定では新しい版を追加し、過去の同意履歴を保持したまま再同意を求めます。
 
@@ -346,7 +346,7 @@ Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを
 
 Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、Cloudflare Workerの公開confirmation/RFC 8058 endpoint、body-onlyのSupabase unsubscribe Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。Supabase hosted GETとInvocation Logsの実測を受けて直接Supabase URLを棄却し、`unsubscribe.tenniscourtwatcher.com`のCloudflare Workerを公開入口としました。production rolloutとacceptanceは2026-08-18に完了し、本文footerは認証済みAccount UI、RFC 8058 capabilityはheadersだけに分離しています。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。必須log boundary、maintenance guard、rollout順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
 
-Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはLINE通知全体の永久廃止ではありません。Phase 4では会員とLINEユーザーを安全に紐づけるDB基盤、LINE Login開始・callback・解除のserver-side境界、My Pageの安全な状態・操作UIを本番反映し、スマホ実機の正方向acceptanceも完了しました。利用者別LINE配信の署名検証webhook、channel分離queue、worker、retry、180通guardは初期OFFで実装済みですが、本番ではまだ有効化しません。
+Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これは現在のMessaging API channelに設定されている別用途Google Apps Scriptとは異なります。Phase 4では会員連携、channel分離queue、worker、retry、180通guardを本番反映し、2026-08-27に単一会員1通の実機canaryを完了しました。delivery gateはOFFへ戻し、現在はSupabase署名検証webhookから既存GASへraw bodyを変えず転送するbridgeの切替を進めています。
 
 手動実行の `dry_run=true` では、取得とArtifact生成は行いますが、リポジトリ内データの更新、commit、push、Pagesデプロイ、email/LINE enqueue・dispatchは行いません。
 
@@ -414,7 +414,7 @@ Launch Readiness Gateは完了し、Phase 4へ進みます。
 4. GitHub Actions外部ActionのコミットSHA固定 — 完了（PR #56）
 5. Monitoring Policyと監視範囲外条件のUI表示 — 完了（PR #57）
 6. 鹿児島βで使用する運用指標の決定 — 完了（Launch Readiness Review）
-7. Phase 4の利用者別LINE通知 — account linkの本番・スマホacceptance完了。webhook・queue・workerは初期OFFで実装・隔離環境検証済み、次は本番へ段階導入
+7. Phase 4の利用者別LINE通知 — account link、queue/worker、本番単一会員canary完了。次は既存GAS互換bridgeのwebhook切替とblock/unfollow acceptance
 
 取得元の利用許可は取得済みである。アクセス負荷とβ運用指標は
 [Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)を参照する。
@@ -422,7 +422,7 @@ Launch Readiness Gateは完了し、Phase 4へ進みます。
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、退会処理、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。Phase 4はaccount linkとスマホ実機acceptanceまで完了し、webhook・利用者別LINE配信は初期OFFで実装・ローカル検証済みです。本番migration・Function deploy・段階有効化は未完了です。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、退会処理、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。Phase 4はaccount link、本番migration/functions、単一会員LINE canaryまで完了しました。全会員deliveryはOFFのままで、既存GAS互換webhook bridgeの切替とblock/unfollow acceptanceが残っています。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。
