@@ -22,11 +22,13 @@
   Use webhook、Webhook redeliveryを有効化
 - 既存GASへraw bodyと署名を保持した転送が2xxになることをpreflightで確認
 - `line-webhook-retention-cleanup`を03:22 JSTの日次cronとして作成し、manual zero-deleteを確認
+- Actions run `33036338712`でshadow-onlyを実行し、1 rule・12 slotsを評価、候補0、
+  LINE/email queue変化0、Push 0、commit/Pages deploy 0を確認
 
 LINE delivery gateはcanary後にOFFへ戻した。既存GASの実メッセージ応答確認は、用途上の
 重要度が低いという所有者判断により2026-08-27に省略した。限定βまたは全会員向けdeliveryは
 未開始であり、提供中と表示しない。次はPR #68をmainへ統合できる状態に保ったままshadow
-no-writeを観測し、複数UUIDのserver-side allowlistを別の前方変更として実装する。
+no-writeを通常運用し、複数UUIDのserver-side allowlistを別の前方変更として実装する。
 
 ## 2. 変更しない境界
 
@@ -189,6 +191,10 @@ LINE dispatch、availability commit、Pages deployを抑止する。PRのmerge�
 条件一致を1回観察できる。Actionsには件数集計だけが出ること、
 `notification_messages`と`notification_delivery_items`へ`channel='line'`の新規行が
 作られないことを確認する。
+
+2026-08-27のrun `33036338712`では、1 rule・12 slotsを評価し、match/enqueue/eligible
+candidateはいずれも0、DB insert/linkも0だった。前後のLINE messageは1件、LINE delivery
+itemは0件、email message/delivery itemは各1件のままで変化しなかった。
 
 ### Stage 2: 単一会員enqueue
 
