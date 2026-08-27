@@ -22,6 +22,7 @@
   Use webhook、Webhook redeliveryを有効化
 - 既存GASへraw bodyと署名を保持した転送が2xxになることをpreflightで確認
 - `line-webhook-retention-cleanup`を03:22 JSTの日次cronとして作成し、manual zero-deleteを確認
+- 同じRPCの一時cron smokeが3回連続で成功することを確認し、一時jobを削除
 - Actions run `33036338712`でshadow-onlyを実行し、1 rule・12 slotsを評価、候補0、
   LINE/email queue変化0、Push 0、commit/Pages deploy 0を確認
 
@@ -267,7 +268,8 @@ DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き�
 - `cleanup_line_webhook_events(1000)`は90日超のwebhook event ledgerをbounded削除する。
   2026-08-27にmanual zero-deleteを確認し、既存email cleanupを変更せず障害範囲を分離した
   `line-webhook-retention-cleanup`を毎日03:22 JST（`22 18 * * *`）に作成した。
-  cronの初回実行結果は翌日以降に`cron.job_run_details`で確認する。
+  同じcommandを使う10秒間隔の一時smoke jobは3回連続で成功し、その後削除した。
+  恒久jobの初回定時実行結果は翌日以降に`cron.job_run_details`で確認する。
 - 通常ログはcandidate、eligible、claimed、accepted、retry、failure、cancelled、quotaの
   集計だけとし、会員UUID、LINE user ID、空き枠payload、tokenを出さない。
 - 180通到達時はworkerがclaim前に停止する。email channelは独立して継続する。
