@@ -201,6 +201,7 @@ def test_user_email_enqueue_has_exact_flags_and_dry_run_gate() -> None:
     assert step["if"] == (
         "vars.ENABLE_NOTIFICATION_MATCHING == 'true' && "
         "vars.ENABLE_USER_EMAIL_ENQUEUE == 'true' && "
+        "env.LINE_SHADOW_ONLY != 'true' && "
         "env.DRY_RUN != 'true'"
     )
     assert step["continue-on-error"] is True
@@ -218,6 +219,7 @@ def test_user_email_dispatch_has_exact_flag_and_independent_dry_run_gate() -> No
 
     assert step["if"] == (
         "vars.ENABLE_USER_EMAIL_DISPATCH == 'true' && "
+        "env.LINE_SHADOW_ONLY != 'true' && "
         "env.DRY_RUN != 'true'"
     )
     assert "ENABLE_NOTIFICATION_MATCHING" not in step["if"]
@@ -265,6 +267,54 @@ def test_email_failures_do_not_block_artifact_commit_or_pages_inputs() -> None:
         )
 
 
+def test_user_line_enqueue_defaults_to_shadow_and_requires_explicit_rollout() -> None:
+    workflow = load_workflow()
+    step = named_step(workflow, "Enqueue user LINE notifications")
+
+    assert step["if"] == (
+        "vars.ENABLE_NOTIFICATION_MATCHING == 'true' && "
+        "vars.ENABLE_USER_LINE_ENQUEUE == 'true' && "
+        "(env.DRY_RUN != 'true' || env.LINE_SHADOW_ONLY == 'true')"
+    )
+    assert step["continue-on-error"] is True
+    assert step["env"] == {
+        "SUPABASE_URL": "${{ vars.SUPABASE_URL }}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+        "LINE_NOTIFICATION_SHADOW_MODE": (
+            "${{ env.LINE_SHADOW_ONLY == 'true' && 'true' || "
+            "vars.LINE_NOTIFICATION_SHADOW_MODE || 'true' }}"
+        ),
+        "LINE_NOTIFICATION_CANARY_USER_ID": (
+            "${{ secrets.LINE_NOTIFICATION_CANARY_USER_ID }}"
+        ),
+        "LINE_NOTIFICATION_ALLOW_ALL": (
+            "${{ vars.LINE_NOTIFICATION_ALLOW_ALL || 'false' }}"
+        ),
+    }
+    assert "scripts/enqueue_line_notifications.py" in step["run"]
+
+
+def test_user_line_dispatch_is_separately_gated_and_has_no_provider_token() -> None:
+    workflow = load_workflow()
+    step = named_step(workflow, "Dispatch user LINE notifications")
+
+    assert step["if"] == (
+        "vars.ENABLE_USER_LINE_DISPATCH == 'true' && "
+        "vars.LINE_NOTIFICATION_SHADOW_MODE == 'false' && "
+        "env.LINE_SHADOW_ONLY != 'true' && "
+        "env.DRY_RUN != 'true'"
+    )
+    assert step["continue-on-error"] is True
+    assert step["env"] == {
+        "SUPABASE_URL": "${{ vars.SUPABASE_URL }}",
+        "LINE_DELIVERY_WORKER_SECRET": (
+            "${{ secrets.LINE_DELIVERY_WORKER_SECRET }}"
+        ),
+    }
+    assert "LINE_CHANNEL_ACCESS_TOKEN" not in step["env"]
+    assert step["run"] == "python scripts/dispatch_line_notifications.py"
+
+
 def test_legacy_administrator_line_inputs_environment_and_state_are_absent() -> None:
     workflow = load_workflow()
     job = workflow["jobs"]["update"]
@@ -272,8 +322,8 @@ def test_legacy_administrator_line_inputs_environment_and_state_are_absent() -> 
     inputs = triggers["workflow_dispatch"]["inputs"]
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    assert set(inputs) == {"dry_run"}
-    assert set(job["env"]) == {"DRY_RUN"}
+    assert set(inputs) == {"dry_run", "line_shadow_only"}
+    assert set(job["env"]) == {"DRY_RUN", "LINE_SHADOW_ONLY"}
     for legacy_reference in (
         "LINE_CHANNEL_ACCESS_TOKEN",
         "LINE_USER_ID",
@@ -306,6 +356,7 @@ def test_run_name_distinguishes_all_execution_modes() -> None:
     assert workflow["run-name"] == (
         "Update tennis availability "
         "[${{ github.event_name == 'schedule' && 'scheduled-live' || "
+        "inputs.line_shadow_only && 'manual-line-shadow' || "
         "inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]"
     )
 
@@ -325,7 +376,7 @@ def test_update_checkout_uses_live_branch_head_and_dry_run_event_sha() -> None:
     assert source_ref["run"] == (
         'if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then\n'
         '  echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"\n'
-        'elif [[ "${DRY_RUN}" == "true" ]]; then\n'
+        'elif [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then\n'
         '  echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"\n'
         "else\n"
         '  echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"\n'
@@ -369,13 +420,46 @@ def test_dry_run_acquires_artifacts_without_commit_push_or_pages_deploy() -> Non
         "Acquire data and artifacts without commit, push, or Pages deployment"
     )
     assert dry_run["default"] is True
-    assert 'if [[ "${DRY_RUN}" == "true" ]]' in execution_step["run"]
+    assert (
+        'if [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]'
+        in execution_step["run"]
+    )
     assert 'echo "deploy_pages=false"' in execution_step["run"]
-    assert commit_step["if"] == "env.DRY_RUN != 'true'"
+    assert commit_step["if"] == (
+        "env.DRY_RUN != 'true' && env.LINE_SHADOW_ONLY != 'true'"
+    )
     assert workflow["jobs"]["deploy-pages"]["if"] == (
         "needs.update.result == 'success' && "
         "needs.update.outputs.deploy_pages == 'true'"
     )
+
+
+def test_line_shadow_only_forces_no_delivery_email_or_repository_writes() -> None:
+    workflow = load_workflow()
+    inputs = workflow_triggers(workflow)["workflow_dispatch"]["inputs"]
+    job = workflow["jobs"]["update"]
+
+    assert inputs["line_shadow_only"] == {
+        "description": (
+            "Evaluate LINE candidates in forced shadow mode without delivery or "
+            "repository writes"
+        ),
+        "type": "boolean",
+        "default": False,
+    }
+    assert job["env"]["LINE_SHADOW_ONLY"] == (
+        "${{ github.event_name == 'workflow_dispatch' && "
+        "inputs.line_shadow_only || false }}"
+    )
+    assert "env.LINE_SHADOW_ONLY != 'true'" in named_step(
+        workflow, "Enqueue user email notifications"
+    )["if"]
+    assert "env.LINE_SHADOW_ONLY != 'true'" in named_step(
+        workflow, "Dispatch user email notifications"
+    )["if"]
+    assert "env.LINE_SHADOW_ONLY != 'true'" in named_step(
+        workflow, "Dispatch user LINE notifications"
+    )["if"]
 
 
 def test_non_dry_run_commits_only_availability() -> None:

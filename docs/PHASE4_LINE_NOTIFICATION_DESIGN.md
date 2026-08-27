@@ -19,8 +19,22 @@ active会員確認、state/nonceの一回限り消費、1会員1LINE・1LINE1会
 token endpoint、ID token verify endpoint、friendship endpointを使用し、検証後の
 user access tokenはbest-effortでrevokeしてDBへ保存しない。本番migration、Function
 secrets、deploy、HTTP境界acceptanceは完了した。My Page UIも実装済みで、スマホでの
-正方向acceptanceは未実施である。導入順は
+正方向acceptanceは2026-08-21に完了した。導入順は
 [LINE account link Runbook](./PHASE4_LINE_ACCOUNT_LINK_RUNBOOK.md)を正とする。
+
+同日に次の前方段階として、署名検証済みMessaging API webhook、冪等なblock/unfollow反映、
+既存の通知条件照合と共通queueを使う`line` channel enqueue、LINE delivery worker、
+retry、送信直前の180通guardを実装した。既存email workerには明示的な`email` channel
+条件を追加し、LINE messageをclaimできないようにした。単一会員canaryは
+enqueueだけでなくworker claimと送信直前authorizationでもserver-side強制する。
+空き枠を捏造せず共通queueと同じworkerを通す固定文面canary test jobも用意する。
+実装と隔離ローカルDBでのmigration・pgTAP・advisor・lintを確認し、2026-08-27に
+本番migrationとFunction deploy、単一会員queue canaryを完了した。固定test jobは
+LINE APIで1回だけ`accepted`となり、月間使用量は19から20へ増え、duplicate、retry、
+email副作用がないことを確認した。LINE delivery gateはテスト後にOFFへ戻している。
+Messaging API channelには別用途のGoogle Apps Script webhookが存在するため、直接置換せず
+署名検証済みpass-through bridgeを先に導入する。
+導入順と停止手順は[LINE Notification Rollout](./PHASE4_LINE_NOTIFICATION_ROLLOUT.md)を正とする。
 
 ## 2. 採用方式
 
@@ -135,6 +149,19 @@ LINE user IDは個人情報に準じ、GitHub、Actions log、Artifact、公開P
 - follow/unfollow/block関連eventは連携状態へ反映する。
 - unknown user、未連携user、失効eventは情報を返さず安全に無視する。
 - raw payload、message本文、LINE user IDをapplication logへ保存しない。
+- webhook event ledgerにはevent ID、event種別、発生時刻だけを90日保持し、
+  LINE user IDとraw payloadは保存しない。
+- LINE Developers Consoleの単一Webhook URLはSupabase Functionを入口にする。
+- Supabaseはraw bodyの署名検証とfollow/unfollow状態反映を完了した後、同じraw bodyと
+  同じ`x-line-signature`を既存Google Apps Scriptへ同期転送する。
+- 転送先は`https://script.google.com/macros/s/<deployment>/exec`だけを許可し、
+  任意URLへの転送を拒否する。URLはFunction secretに保存し、ログへ出さない。
+- GASが2xxを返した場合だけLINEへ2xxを返す。timeout、network error、非2xxでは
+  `502`を返し、LINE webhook redeliveryへ委ねる。
+- Supabaseの状態反映はevent IDで冪等なため、GAS失敗後のredeliveryで重複更新しない。
+  GAS側もLINE本来のat-least-once deliveryを前提とした既存重複制御を維持する。
+- 空のVerify payloadとmessage-only eventもGASへ転送し、既存Botのreply tokenや
+  message payloadを再構築しない。
 
 ## 7. UX
 
@@ -154,14 +181,14 @@ LINE display name、profile image、status message、email addressは取得し�
 1. LINE provider、公式アカウント、Messaging API channel、LINE Login channelを同一providerに準備する。
 2. schema、RLS、Grant、link session、account linkのmigrationを作る。— 完了
 3. LINE Login開始・callback・解除Edge Functionを実装する。— 本番反映・HTTP境界確認完了
-4. My Pageへ連携状態と操作UIを追加する。— 実装完了、スマホacceptance待ち
-5. webhook署名検証、冪等化、block/unfollow反映を実装する。
-6. 月間使用量の週次報告と180通警告を有効化する。
-7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。
-8. dry-runと架空利用者によるcross-user isolationを検証する。
-9. 管理者を含むβ会員を同じ基盤で連携する。
-10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。
-11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。
+4. My Pageへ連携状態と操作UIを追加する。— 実装・本番スマホacceptance完了
+5. webhook署名検証、冪等化、block/unfollow反映を実装する。— 実装・本番Function deploy完了、GAS bridge切替待ち
+6. 月間使用量の週次報告と180通警告を有効化する。— 完了
+7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。— 実装・単一会員本番canary完了
+8. dry-runと架空利用者によるcross-user isolationを検証する。— shadow no-write、cross-user、channel分離を隔離環境で確認済み
+9. 管理者を含むβ会員を同じ基盤で連携する。— 単一会員本番canary完了
+10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。— 単一会員まで完了、限定β allowlistは次段階
+11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。— 単一会員deliveryと即時停止を確認、webhook/block系はbridge切替後に確認
 
 ## 9. 完了条件
 
