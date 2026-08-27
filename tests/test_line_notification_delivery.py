@@ -94,6 +94,16 @@ def test_line_enqueue_is_shadowable_canary_gated_and_rule_aligned() -> None:
     assert "group by delivery_item.user_id, delivery_item.channel" in body
 
 
+def test_fixed_canary_uses_shared_queue_without_fake_availability() -> None:
+    body = function_definition("enqueue_line_canary_test")
+    assert "security invoker" in body
+    assert "insert into public.notification_messages" in body
+    assert "insert into public.notification_delivery_items" not in body
+    assert "line_test_text" in body
+    assert "【テスト通知】鹿児島テニス空き情報 line通知の動作確認です。" in body
+    assert "on conflict (id) do nothing" in body
+
+
 def test_email_and_line_workers_have_hard_channel_boundaries() -> None:
     email_claim = function_definition("claim_email_messages")
     line_claim = function_definition("claim_line_messages")
@@ -102,6 +112,8 @@ def test_email_and_line_workers_have_hard_channel_boundaries() -> None:
     assert line_claim.count("message.channel = 'line'") >= 3
     assert "message.channel = 'email'" not in line_claim
     assert "link.line_user_id" in line_claim
+    assert "p_allow_all or message.user_id = p_canary_user_id" in line_claim
+    assert "message.line_test_text" in line_claim
     assert "for update of message skip locked" in line_claim
 
 
@@ -111,6 +123,7 @@ def test_line_authorization_rechecks_exact_recipient_and_lease() -> None:
     assert "message.locked_until > pg_catalog.now()" in authorization
     assert "link.line_user_id = p_line_user_id" in authorization
     assert "link.status = 'active'" in authorization
+    assert "v_message.user_id <> p_canary_user_id" in authorization
     assert "provider_payload_changed" in authorization
     assert "interval '23 hours'" in authorization
 
@@ -148,6 +161,7 @@ def test_line_rpcs_are_service_role_only() -> None:
     for name in (
         "record_line_webhook_events",
         "enqueue_line_notification_candidates",
+        "enqueue_line_canary_test",
         "claim_line_messages",
         "authorize_line_message_send",
         "record_line_message_accepted",
@@ -188,6 +202,11 @@ def test_worker_checks_quota_before_claim_and_uses_retry_key() -> None:
     assert "Math.min(batchSize, remainingQuota)" in source
     assert "limit <= 180" in source
     assert 'Deno.env.get("ENABLE_USER_LINE_NOTIFICATIONS") !== "true"' in source
+    assert 'Deno.env.get("LINE_NOTIFICATION_CANARY_USER_ID")' in source
+    assert 'Deno.env.get("LINE_NOTIFICATION_ALLOW_ALL")' in source
+    assert "p_canary_user_id: rolloutControls.canaryUserId" in source
+    assert "p_allow_all: rolloutControls.allowAll" in source
+    assert "message.test_text ?? renderLineMessage(message.items)" in source
     assert '"x-line-retry-key": deterministicLineRetryKey(' in source
     assert 'response.headers.get("x-line-accepted-request-id")' in source
     assert "MAX_LINE_TEXT_CHARACTERS = 4800" in helpers
@@ -199,5 +218,5 @@ def test_line_edge_function_unit_tests_are_present() -> None:
     assert (WEBHOOK / "helpers_test.ts").is_file()
     assert (WORKER / "helpers_test.ts").is_file()
     assert PGTAP.is_file()
-    assert "select extensions.plan(30);" in read(PGTAP)
+    assert "select extensions.plan(42);" in read(PGTAP)
     parse_sql(read(PGTAP))

@@ -6,6 +6,7 @@ import {
   deterministicLineRetryKey,
   extractQuotaConsumption,
   hmacPayloadFingerprint,
+  LINE_CANARY_TEST_TEXT,
   normalizeLineRequestId,
   renderLineMessage,
 } from "./helpers.ts";
@@ -66,6 +67,17 @@ test("push payload and retry key are recipient and message bound", async () => {
   );
   assert.match(fingerprint, /^[0-9a-f]{64}$/);
   assert.notEqual(fingerprint, changed);
+});
+
+test("canary text is fixed, explicit, and valid for the normal push payload", () => {
+  assert.equal(
+    LINE_CANARY_TEST_TEXT,
+    "【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。",
+  );
+  assert.deepEqual(buildLinePushPayload(LINE_USER_ID, LINE_CANARY_TEST_TEXT), {
+    to: LINE_USER_ID,
+    messages: [{ type: "text", text: LINE_CANARY_TEST_TEXT }],
+  });
 });
 
 test("provider status classification follows LINE retry guidance", () => {

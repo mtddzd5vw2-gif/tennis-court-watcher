@@ -28,6 +28,17 @@ from public, anon, authenticated, service_role;
 grant select, insert, delete on table public.line_webhook_events
 to service_role;
 
+alter table public.notification_messages
+add column line_test_text text,
+add constraint notification_messages_line_test_text_check check (
+  line_test_text is null
+  or (
+    channel = 'line'::public.notification_channel
+    and line_test_text =
+      '【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。'
+  )
+);
+
 create function public.record_line_webhook_events(
   p_events jsonb
 )
@@ -515,6 +526,72 @@ begin
 end;
 $$;
 
+create function public.enqueue_line_canary_test(
+  p_canary_user_id uuid,
+  p_message_id uuid
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_inserted_count pg_catalog.int4;
+  v_test_text constant pg_catalog.text :=
+    '【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。';
+begin
+  if p_canary_user_id is null or p_message_id is null then
+    raise exception 'LINE canary test input is invalid.'
+      using errcode = '22023';
+  end if;
+
+  if not exists (
+    select 1
+    from public.profiles as profile
+    inner join public.line_account_links as link
+      on link.user_id = profile.id
+    where profile.id = p_canary_user_id
+      and profile.membership_status = 'active'::public.membership_status
+      and link.status = 'active'::public.line_account_link_status
+  ) then
+    raise exception 'LINE canary test recipient is ineligible.'
+      using errcode = '42501';
+  end if;
+
+  insert into public.notification_messages (
+    id,
+    user_id,
+    channel,
+    status,
+    next_attempt_at,
+    line_test_text
+  )
+  values (
+    p_message_id,
+    p_canary_user_id,
+    'line'::public.notification_channel,
+    'pending'::public.notification_message_status,
+    pg_catalog.now(),
+    v_test_text
+  )
+  on conflict (id) do nothing;
+
+  get diagnostics v_inserted_count = row_count;
+  if v_inserted_count = 1 then
+    return true;
+  end if;
+
+  return exists (
+    select 1
+    from public.notification_messages as message
+    where message.id = p_message_id
+      and message.user_id = p_canary_user_id
+      and message.channel = 'line'::public.notification_channel
+      and message.line_test_text = v_test_text
+  );
+end;
+$$;
+
 -- The Phase 3 implementation predated the LINE enum value. Constrain its
 -- claim scan explicitly so a future LINE row can never reach the email worker.
 create or replace function public.claim_email_messages(
@@ -712,7 +789,9 @@ end;
 $$;
 
 create function public.claim_line_messages(
-  batch_size integer
+  batch_size integer,
+  p_canary_user_id uuid,
+  p_allow_all boolean
 )
 returns table (
   message_id uuid,
@@ -721,6 +800,7 @@ returns table (
   channel public.notification_channel,
   attempt_count integer,
   locked_until timestamptz,
+  test_text text,
   items jsonb
 )
 language plpgsql
@@ -732,8 +812,15 @@ declare
   v_max_attempts constant pg_catalog.int4 := 5;
   v_provider_safety_window constant interval := interval '23 hours';
 begin
-  if batch_size is null or batch_size < 1 or batch_size > v_max_batch_size then
-    raise exception 'LINE message claim batch size is invalid.'
+  if (
+    batch_size is null
+    or batch_size < 1
+    or batch_size > v_max_batch_size
+    or p_allow_all is null
+    or (p_allow_all and p_canary_user_id is not null)
+    or (not p_allow_all and p_canary_user_id is null)
+  ) then
+    raise exception 'LINE message claim controls are invalid.'
       using errcode = '22023';
   end if;
 
@@ -741,6 +828,7 @@ begin
     select message.id
     from public.notification_messages as message
     where message.channel = 'line'::public.notification_channel
+      and (p_allow_all or message.user_id = p_canary_user_id)
       and (
         message.status in ('pending', 'retry_wait')
         or (
@@ -781,6 +869,7 @@ begin
       on link.user_id = message.user_id
       and link.status = 'active'::public.line_account_link_status
     where message.channel = 'line'::public.notification_channel
+      and (p_allow_all or message.user_id = p_canary_user_id)
       and (
         message.status in ('pending', 'retry_wait')
         or (
@@ -826,6 +915,7 @@ begin
       on link.user_id = message.user_id
       and link.status = 'active'::public.line_account_link_status
     where message.channel = 'line'::public.notification_channel
+      and (p_allow_all or message.user_id = p_canary_user_id)
       and (
         (
           message.status in ('pending', 'retry_wait')
@@ -864,7 +954,8 @@ begin
       message.user_id,
       message.channel,
       message.attempt_count,
-      message.locked_until
+      message.locked_until,
+      message.line_test_text
   )
   select
     claimed.id,
@@ -873,29 +964,33 @@ begin
     claimed.channel,
     claimed.attempt_count,
     claimed.locked_until,
-    pg_catalog.jsonb_agg(
-      pg_catalog.jsonb_build_object(
-        'facility_name', delivery_item.facility_name,
-        'available_date', delivery_item.available_date,
-        'start_time', delivery_item.start_time,
-        'end_time', delivery_item.end_time,
-        'payload', delivery_item.payload
+    claimed.line_test_text,
+    case
+      when claimed.line_test_text is not null then '[]'::pg_catalog.jsonb
+      else pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_object(
+          'facility_name', delivery_item.facility_name,
+          'available_date', delivery_item.available_date,
+          'start_time', delivery_item.start_time,
+          'end_time', delivery_item.end_time,
+          'payload', delivery_item.payload
+        )
+        order by
+          delivery_item.available_date,
+          delivery_item.start_time,
+          delivery_item.end_time,
+          delivery_item.facility_name,
+          delivery_item.payload::text,
+          delivery_item.id
       )
-      order by
-        delivery_item.available_date,
-        delivery_item.start_time,
-        delivery_item.end_time,
-        delivery_item.facility_name,
-        delivery_item.payload::text,
-        delivery_item.id
-    )
+    end
   from claimed_messages as claimed
   inner join public.line_account_links as link
     on link.user_id = claimed.user_id
     and link.status = 'active'::public.line_account_link_status
-  inner join public.notification_message_items as message_item
+  left join public.notification_message_items as message_item
     on message_item.message_id = claimed.id
-  inner join public.notification_delivery_items as delivery_item
+  left join public.notification_delivery_items as delivery_item
     on delivery_item.id = message_item.delivery_item_id
   group by
     claimed.id,
@@ -903,7 +998,11 @@ begin
     link.line_user_id,
     claimed.channel,
     claimed.attempt_count,
-    claimed.locked_until
+    claimed.locked_until,
+    claimed.line_test_text
+  having
+    claimed.line_test_text is not null
+    or pg_catalog.count(delivery_item.id) > 0
   order by claimed.locked_until, claimed.id;
 end;
 $$;
@@ -912,7 +1011,9 @@ create function public.authorize_line_message_send(
   p_message_id uuid,
   p_locked_until timestamptz,
   p_line_user_id text,
-  p_provider_payload_fingerprint text
+  p_provider_payload_fingerprint text,
+  p_canary_user_id uuid,
+  p_allow_all boolean
 )
 returns text
 language plpgsql
@@ -931,6 +1032,9 @@ begin
     or p_line_user_id !~ '^U[0-9a-f]{32}$'
     or p_provider_payload_fingerprint is null
     or p_provider_payload_fingerprint !~ '^[0-9a-f]{64}$'
+    or p_allow_all is null
+    or (p_allow_all and p_canary_user_id is not null)
+    or (not p_allow_all and p_canary_user_id is null)
   ) then
     raise exception 'LINE send authorization input is invalid.'
       using errcode = '22023';
@@ -948,6 +1052,18 @@ begin
 
   if not found then
     return 'stale';
+  end if;
+
+  if not p_allow_all and v_message.user_id <> p_canary_user_id then
+    update public.notification_messages as message
+    set
+      status = 'cancelled'::public.notification_message_status,
+      locked_at = null,
+      locked_until = null,
+      last_error_code = null,
+      last_error_message = null
+    where message.id = v_message.id;
+    return 'cancelled';
   end if;
 
   if not exists (
@@ -1311,23 +1427,32 @@ grant execute on function public.enqueue_line_notification_candidates(
 )
 to service_role;
 
-revoke all on function public.claim_line_messages(integer)
+revoke all on function public.enqueue_line_canary_test(uuid, uuid)
 from public, anon, authenticated, service_role;
-grant execute on function public.claim_line_messages(integer)
+grant execute on function public.enqueue_line_canary_test(uuid, uuid)
+to service_role;
+
+revoke all on function public.claim_line_messages(integer, uuid, boolean)
+from public, anon, authenticated, service_role;
+grant execute on function public.claim_line_messages(integer, uuid, boolean)
 to service_role;
 
 revoke all on function public.authorize_line_message_send(
   uuid,
   timestamptz,
   text,
-  text
+  text,
+  uuid,
+  boolean
 )
 from public, anon, authenticated, service_role;
 grant execute on function public.authorize_line_message_send(
   uuid,
   timestamptz,
   text,
-  text
+  text,
+  uuid,
+  boolean
 )
 to service_role;
 
@@ -1380,15 +1505,19 @@ comment on function public.enqueue_line_notification_candidates(
   boolean
 ) is
   'Validates LINE candidates and supports no-write shadow and canary rollout.';
-comment on function public.claim_line_messages(integer) is
-  'Claims bounded LINE batches for active linked members only.';
+comment on function public.enqueue_line_canary_test(uuid, uuid) is
+  'Idempotently queues one fixed-text LINE canary without a fake availability item.';
+comment on function public.claim_line_messages(integer, uuid, boolean) is
+  'Claims bounded LINE batches within the server-side canary or allow-all boundary.';
 comment on function public.authorize_line_message_send(
   uuid,
   timestamptz,
   text,
-  text
+  text,
+  uuid,
+  boolean
 ) is
-  'Rechecks the exact LINE recipient, lease, and payload before push.';
+  'Rechecks canary scope, exact LINE recipient, lease, and payload before push.';
 comment on function public.record_line_message_accepted(
   uuid,
   timestamptz,

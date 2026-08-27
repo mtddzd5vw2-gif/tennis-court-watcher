@@ -10,7 +10,8 @@
 - `user_id`、`channel`、`slot_id`単位の共通重複防止と、email/LINE workerのchannel分離
 - LINE Pushの固定retry key、recipient/payload再確認、bounded retry
 - 送信直前の月間使用量確認と180通guard
-- shadow no-write、単一会員canary、全会員許可のfail-closed gate
+- shadow no-write、enqueue/claim/送信直前の単一会員canary、全会員許可のfail-closed gate
+- 空き枠を捏造しない、固定文面の共通queue canary test job
 - 架空利用者を使ったcross-user isolation、RLS/Grant、rollback、retentionのpgTAP
 - 全migrationの再適用、Supabase database lint、security/performance advisor
 
@@ -35,9 +36,10 @@ LINE Pushが実行されるには、すべての条件が同時に必要であ�
 3. GitHub Secret `LINE_NOTIFICATION_CANARY_USER_ID`が対象会員のSupabase Auth UUIDと一致する、
    またはGitHub Variable `LINE_NOTIFICATION_ALLOW_ALL=true`
 4. GitHub Variable `ENABLE_USER_LINE_DISPATCH=true`
-5. Supabase Edge Function secret `ENABLE_USER_LINE_NOTIFICATIONS=true`
-6. 連携、会員状態、通知条件、lease、recipient、payload fingerprintの送信直前再確認に成功する
-7. LINE公式APIの月間使用量が`LINE_MONTHLY_PUSH_LIMIT`未満である
+5. Supabase Edge Function secret `LINE_NOTIFICATION_CANARY_USER_ID`が同じ対象UUIDと一致し、`LINE_NOTIFICATION_ALLOW_ALL=false`
+6. Supabase Edge Function secret `ENABLE_USER_LINE_NOTIFICATIONS=true`
+7. 連携、会員状態、通知条件、lease、recipient、payload fingerprintの送信直前再確認に成功する
+8. LINE公式APIの月間使用量が`LINE_MONTHLY_PUSH_LIMIT`未満である
 
 shadow modeは候補を評価して集計だけを返し、queueへ書き込まない。live enqueueは
 canaryも明示的な全会員許可もない場合に失敗する。`allow all`とcanaryの同時指定も
@@ -58,6 +60,8 @@ canaryも明示的な全会員許可もない場合に失敗する。`allow all`
 | `LINE_DELIVERY_WORKER_SECRET` | GitHub ActionsからLINE workerだけを呼び出す高entropy bearer secret |
 | `LINE_DELIVERY_PAYLOAD_HMAC_KEY` | recipientとpayloadの整合性fingerprint。worker secretと別の値 |
 | `LINE_MONTHLY_PUSH_LIMIT` | ハード上限`180`。1以上180以下 |
+| `LINE_NOTIFICATION_CANARY_USER_ID` | worker claimと送信直前再検証が強制する単一canary UUID |
+| `LINE_NOTIFICATION_ALLOW_ALL` | 単一canary中は`false`。canary UUIDとの同時有効は拒否 |
 | `ENABLE_USER_LINE_NOTIFICATIONS` | Edge Function内の最終gate。初期値`false` |
 
 `SUPABASE_URL`と`SUPABASE_SERVICE_ROLE_KEY`はSupabase hosted Edge Functionへ自動提供される。
@@ -108,10 +112,12 @@ npx --yes supabase@2.115.0 db push --linked --skip-vault --dry-run
 
 ### 5.2 Secret設定とFunction deploy
 
-Git管理外の`.env.line-delivery.local`を作り、4つの秘密値と次の2値だけを置く。
+Git管理外の`.env.line-delivery.local`を作り、4つの秘密値と単一canary UUID、次の3値だけを置く。
 
 ```text
+LINE_NOTIFICATION_CANARY_USER_ID=<Supabase Auth UUID>
 LINE_MONTHLY_PUSH_LIMIT=180
+LINE_NOTIFICATION_ALLOW_ALL=false
 ENABLE_USER_LINE_NOTIFICATIONS=false
 ```
 
@@ -158,7 +164,9 @@ gh variable set LINE_NOTIFICATION_ALLOW_ALL --body "false"
 
 ### Stage 2: 単一会員enqueue
 
-`LINE_NOTIFICATION_CANARY_USER_ID`をcanary本人のSupabase Auth UUIDへ設定する。
+GitHubとSupabase Edge Functionの両方の`LINE_NOTIFICATION_CANARY_USER_ID`を
+canary本人のSupabase Auth UUIDへ設定する。Supabase側の
+`LINE_NOTIFICATION_ALLOW_ALL=false`も確認する。
 canaryはactive会員、LINE連携`active`、有効な通知条件を持つ必要がある。
 
 ```powershell
@@ -173,6 +181,12 @@ gh variable set ENABLE_USER_LINE_DISPATCH --body "false"
 
 Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=true`を設定し、その後でGitHubの
 `ENABLE_USER_LINE_DISPATCH=true`を設定する。1回だけworkerを実行し、次を確認する。
+
+安全な実空き候補がない場合は、service-roleの
+`enqueue_line_canary_test(canary_user_id, message_id)`を1回だけ実行する。
+`message_id`はoperatorが生成したUUIDを保持し、同じoperationでは必ず再利用する。
+このtest jobは「【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。」
+だけを保持し、`notification_delivery_items`へ架空の空き枠を作らない。
 
 - canary端末へ期待した空き通知が1通届く
 - messageは`accepted`または重複再試行時の`accepted_retry`になる

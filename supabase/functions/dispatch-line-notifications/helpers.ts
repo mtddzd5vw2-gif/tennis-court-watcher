@@ -33,6 +33,8 @@ const LINE_REQUEST_ID_PATTERN =
 const MAX_LINE_TEXT_CHARACTERS = 4800;
 const SETTINGS_URL =
   "https://tenniscourtwatcher.com/account/index.html#line-link-title";
+export const LINE_CANARY_TEST_TEXT =
+  "【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。";
 
 export function validHttpUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.trim().length === 0) {

@@ -5,6 +5,7 @@ import {
   deterministicLineRetryKey,
   extractQuotaConsumption,
   hmacPayloadFingerprint,
+  LINE_CANARY_TEST_TEXT,
   LineNotificationItem,
   normalizeLineRequestId,
   renderLineMessage,
@@ -17,6 +18,8 @@ const MAX_BATCH_SIZE = 10;
 const LINE_TIMEOUT_MS = 15_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 16 * 1024;
 const USER_AGENT = "tennis-court-watcher-line-worker/1.0";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ClaimedMessage {
   message_id: string;
@@ -25,7 +28,13 @@ interface ClaimedMessage {
   channel: "line";
   attempt_count: number;
   locked_until: string;
+  test_text: string | null;
   items: LineNotificationItem[];
+}
+
+interface RolloutControls {
+  canaryUserId: string | null;
+  allowAll: boolean;
 }
 
 interface Metrics {
@@ -57,6 +66,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
   if (Deno.env.get("ENABLE_USER_LINE_NOTIFICATIONS") !== "true") {
     return jsonResponse(503, { error: "delivery_disabled" });
+  }
+
+  const rolloutControls = readRolloutControls(
+    Deno.env.get("LINE_NOTIFICATION_CANARY_USER_ID"),
+    Deno.env.get("LINE_NOTIFICATION_ALLOW_ALL"),
+  );
+  if (rolloutControls === null) {
+    return jsonResponse(503, { error: "service_unavailable" });
   }
 
   const batchSize = await readBatchSize(request);
@@ -100,7 +117,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const claimSize = Math.min(batchSize, remainingQuota);
   const { data: claimed, error: claimError } = await supabase.rpc(
     "claim_line_messages",
-    { batch_size: claimSize },
+    {
+      batch_size: claimSize,
+      p_canary_user_id: rolloutControls.canaryUserId,
+      p_allow_all: rolloutControls.allowAll,
+    },
   );
   if (claimError !== null || !Array.isArray(claimed)) {
     return jsonResponse(500, { error: "claim_failed" });
@@ -118,6 +139,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       message,
       channelAccessToken,
       payloadHmacKey,
+      rolloutControls,
       metrics,
     );
   }
@@ -129,10 +151,11 @@ async function processMessage(
   message: ClaimedMessage,
   channelAccessToken: string,
   payloadHmacKey: string,
+  rolloutControls: RolloutControls,
   metrics: Metrics,
 ): Promise<void> {
   try {
-    const text = renderLineMessage(message.items);
+    const text = message.test_text ?? renderLineMessage(message.items);
     const providerPayload = buildLinePushPayload(message.line_user_id, text);
     const serializedPayload = JSON.stringify(providerPayload);
     const payloadFingerprint = await hmacPayloadFingerprint(
@@ -146,6 +169,8 @@ async function processMessage(
         p_locked_until: message.locked_until,
         p_line_user_id: message.line_user_id,
         p_provider_payload_fingerprint: payloadFingerprint,
+        p_canary_user_id: rolloutControls.canaryUserId,
+        p_allow_all: rolloutControls.allowAll,
       });
     if (authorizationError !== null) {
       return;
@@ -380,6 +405,14 @@ function isClaimedMessage(value: unknown): value is ClaimedMessage {
     return false;
   }
   const candidate = value as Record<string, unknown>;
+  const hasRegularItems =
+    candidate.test_text === null &&
+    Array.isArray(candidate.items) &&
+    candidate.items.length > 0;
+  const hasCanaryText =
+    candidate.test_text === LINE_CANARY_TEST_TEXT &&
+    Array.isArray(candidate.items) &&
+    candidate.items.length === 0;
   return (
     typeof candidate.message_id === "string" &&
     typeof candidate.user_id === "string" &&
@@ -388,9 +421,32 @@ function isClaimedMessage(value: unknown): value is ClaimedMessage {
     candidate.channel === "line" &&
     typeof candidate.attempt_count === "number" &&
     typeof candidate.locked_until === "string" &&
-    Array.isArray(candidate.items) &&
-    candidate.items.length > 0
+    (hasRegularItems || hasCanaryText)
   );
+}
+
+function readRolloutControls(
+  canaryValue: string | undefined,
+  allowAllValue: string | undefined,
+): RolloutControls | null {
+  if (allowAllValue !== "true" && allowAllValue !== "false") {
+    return null;
+  }
+  const allowAll = allowAllValue === "true";
+  const canary = canaryValue?.trim() ?? "";
+  const normalizedCanary = UUID_PATTERN.test(canary)
+    ? canary.toLowerCase()
+    : null;
+  if (
+    (allowAll && canary.length > 0) ||
+    (!allowAll && normalizedCanary === null)
+  ) {
+    return null;
+  }
+  return {
+    canaryUserId: normalizedCanary,
+    allowAll,
+  };
 }
 
 function emptyMetrics(quotaConsumption: number, quotaLimit: number): Metrics {

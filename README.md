@@ -368,7 +368,7 @@ Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 
 | `SUPABASE_PUBLISHABLE_KEY` | ブラウザ公開用のpublishable key |
 | `AUTH_CALLBACK_URL` | Supabaseに許可登録した本番callback URL |
 
-`SUPABASE_SERVICE_ROLE_KEY` はmatching/enqueue stepだけ、`EMAIL_DELIVERY_WORKER_SECRET` と `LINE_DELIVERY_WORKER_SECRET` は各dispatch stepだけへ渡します。単一canaryのSupabase Auth UUIDは`LINE_NOTIFICATION_CANARY_USER_ID` GitHub Secretに保存します。LINE Messaging APIのtokenはSupabase Edge Function secretに留め、通常のavailability workflowへ渡しません。各通知stepは `continue-on-error: true` で、失敗してもavailability Artifact・commit・Pages公開を妨げません。
+`SUPABASE_SERVICE_ROLE_KEY` はmatching/enqueue stepだけ、`EMAIL_DELIVERY_WORKER_SECRET` と `LINE_DELIVERY_WORKER_SECRET` は各dispatch stepだけへ渡します。単一canaryのSupabase Auth UUIDはGitHub SecretとSupabase Edge Function secretの両方の`LINE_NOTIFICATION_CANARY_USER_ID`に保存し、enqueue、worker claim、送信直前再検証の3境界で同じ対象を強制します。LINE Messaging APIのtokenはSupabase Edge Function secretに留め、通常のavailability workflowへ渡しません。各通知stepは `continue-on-error: true` で、失敗してもavailability Artifact・commit・Pages公開を妨げません。
 
 LINE使用量報告は `.github/workflows/report-line-usage.yml` が毎日12:07 JSTに
 公式APIの月間上限と使用済み通数を確認します。土曜は週次メールを送り、

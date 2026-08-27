@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(30);
+select extensions.plan(42);
 
 insert into auth.users (id)
 values
@@ -216,7 +216,11 @@ select extensions.is(
 );
 
 create temporary table line_delivery_test_claim as
-select * from public.claim_line_messages(1);
+select * from public.claim_line_messages(
+  1,
+  '10000000-0000-4000-8000-000000000011',
+  false
+);
 
 select extensions.is(
   (select count(*)::integer from line_delivery_test_claim),
@@ -235,7 +239,9 @@ select extensions.is(
     (select message_id from line_delivery_test_claim),
     (select locked_until from line_delivery_test_claim),
     (select line_user_id from line_delivery_test_claim),
-    repeat('a', 64)
+    repeat('a', 64),
+    '10000000-0000-4000-8000-000000000011',
+    false
   ),
   'authorized',
   'LINE send authorization accepts the exact recipient and lease'
@@ -260,6 +266,123 @@ select extensions.is(
   ),
   'accepted',
   'accepted LINE message is terminal'
+);
+
+select extensions.ok(
+  public.enqueue_line_canary_test(
+    '10000000-0000-4000-8000-000000000011',
+    '40000000-0000-4000-8000-000000000055'
+  ),
+  'fixed-text canary is queued for the selected active member'
+);
+
+select extensions.ok(
+  public.enqueue_line_canary_test(
+    '10000000-0000-4000-8000-000000000011',
+    '40000000-0000-4000-8000-000000000055'
+  ),
+  'repeating the canary idempotency key is a safe no-op'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.notification_messages
+    where id = '40000000-0000-4000-8000-000000000055'
+  ),
+  1,
+  'canary replay creates no duplicate queue row'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.claim_email_messages(10)
+  ),
+  0,
+  'email worker cannot claim the fixed-text LINE canary'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.claim_line_messages(
+      1,
+      '10000000-0000-4000-8000-000000000012',
+      false
+    )
+  ),
+  0,
+  'the wrong server-side canary cannot claim the test message'
+);
+
+select extensions.is(
+  (
+    select status::text
+    from public.notification_messages
+    where id = '40000000-0000-4000-8000-000000000055'
+  ),
+  'pending',
+  'wrong-canary claim leaves the selected recipients job pending'
+);
+
+create temporary table line_delivery_fixed_test_claim as
+select * from public.claim_line_messages(
+  1,
+  '10000000-0000-4000-8000-000000000011',
+  false
+);
+
+select extensions.is(
+  (select count(*)::integer from line_delivery_fixed_test_claim),
+  1,
+  'the selected server-side canary claims exactly one test message'
+);
+
+select extensions.is(
+  (select test_text from line_delivery_fixed_test_claim),
+  '【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。',
+  'the canary carries only the fixed explicit test text'
+);
+
+select extensions.is(
+  (select items from line_delivery_fixed_test_claim),
+  '[]'::jsonb,
+  'the canary does not fabricate an availability delivery item'
+);
+
+select extensions.is(
+  public.authorize_line_message_send(
+    (select message_id from line_delivery_fixed_test_claim),
+    (select locked_until from line_delivery_fixed_test_claim),
+    (select line_user_id from line_delivery_fixed_test_claim),
+    repeat('b', 64),
+    '10000000-0000-4000-8000-000000000011',
+    false
+  ),
+  'authorized',
+  'send authorization rechecks the selected canary for the test message'
+);
+
+select extensions.is(
+  public.record_line_message_accepted(
+    (select message_id from line_delivery_fixed_test_claim),
+    (select locked_until from line_delivery_fixed_test_claim),
+    'line:request:223e4567-e89b-42d3-a456-426614174000',
+    'accepted'
+  ),
+  true,
+  'the fixed-text canary records normal provider acceptance'
+);
+
+select extensions.is(
+  (
+    select status::text
+    from public.notification_messages
+    where id = '40000000-0000-4000-8000-000000000055'
+  ),
+  'accepted',
+  'the accepted canary is terminal and cannot be resent'
 );
 
 select extensions.is(
@@ -359,7 +482,7 @@ select extensions.is(
 select extensions.ok(
   not has_function_privilege(
     'authenticated',
-    'public.claim_line_messages(integer)',
+    'public.claim_line_messages(integer,uuid,boolean)',
     'EXECUTE'
   ),
   'authenticated members cannot claim LINE messages'
@@ -368,7 +491,7 @@ select extensions.ok(
 select extensions.ok(
   has_function_privilege(
     'service_role',
-    'public.claim_line_messages(integer)',
+    'public.claim_line_messages(integer,uuid,boolean)',
     'EXECUTE'
   ),
   'service role can claim LINE messages'

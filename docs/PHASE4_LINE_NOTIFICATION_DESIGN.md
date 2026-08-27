@@ -25,7 +25,10 @@ secrets、deploy、HTTP境界acceptanceは完了した。My Page UIも実装済�
 同日に次の前方段階として、署名検証済みMessaging API webhook、冪等なblock/unfollow反映、
 既存の通知条件照合と共通queueを使う`line` channel enqueue、LINE delivery worker、
 retry、送信直前の180通guardを実装した。既存email workerには明示的な`email` channel
-条件を追加し、LINE messageをclaimできないようにした。実装と隔離ローカルDBでの
+条件を追加し、LINE messageをclaimできないようにした。単一会員canaryは
+enqueueだけでなくworker claimと送信直前authorizationでもserver-side強制する。
+空き枠を捏造せず共通queueと同じworkerを通す固定文面canary test jobも用意する。
+実装と隔離ローカルDBでの
 migration・pgTAP・advisor・lintは確認済みである。本番migration、Function deploy、
 webhook登録、shadow/canary/production acceptanceは未実施であり、すべて初期OFFとする。
 導入順と停止手順は[LINE Notification Rollout](./PHASE4_LINE_NOTIFICATION_ROLLOUT.md)を正とする。
