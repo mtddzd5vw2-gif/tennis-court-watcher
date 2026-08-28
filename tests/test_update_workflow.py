@@ -146,7 +146,10 @@ def test_notification_matching_is_variable_gated_after_scraping() -> None:
     step = matching_step(workflow)
     names = [item.get("name") for item in steps]
 
-    assert step["if"] == "vars.ENABLE_NOTIFICATION_MATCHING == 'true'"
+    assert step["if"] == (
+        "env.LINE_DISPATCH_ONLY != 'true' && "
+        "vars.ENABLE_NOTIFICATION_MATCHING == 'true'"
+    )
     assert step["continue-on-error"] is True
     assert names.index("Update availability") < names.index(
         "Match notification rules"
@@ -199,6 +202,7 @@ def test_user_email_enqueue_has_exact_flags_and_dry_run_gate() -> None:
     step = named_step(workflow, "Enqueue user email notifications")
 
     assert step["if"] == (
+        "env.LINE_DISPATCH_ONLY != 'true' && "
         "vars.ENABLE_NOTIFICATION_MATCHING == 'true' && "
         "vars.ENABLE_USER_EMAIL_ENQUEUE == 'true' && "
         "env.LINE_SHADOW_ONLY != 'true' && "
@@ -218,6 +222,7 @@ def test_user_email_dispatch_has_exact_flag_and_independent_dry_run_gate() -> No
     step = named_step(workflow, "Dispatch user email notifications")
 
     assert step["if"] == (
+        "env.LINE_DISPATCH_ONLY != 'true' && "
         "vars.ENABLE_USER_EMAIL_DISPATCH == 'true' && "
         "env.LINE_SHADOW_ONLY != 'true' && "
         "env.DRY_RUN != 'true'"
@@ -272,6 +277,7 @@ def test_user_line_enqueue_defaults_to_shadow_and_requires_explicit_rollout() ->
     step = named_step(workflow, "Enqueue user LINE notifications")
 
     assert step["if"] == (
+        "env.LINE_DISPATCH_ONLY != 'true' && "
         "vars.ENABLE_NOTIFICATION_MATCHING == 'true' && "
         "vars.ENABLE_USER_LINE_ENQUEUE == 'true' && "
         "(env.DRY_RUN != 'true' || env.LINE_SHADOW_ONLY == 'true')"
@@ -325,8 +331,12 @@ def test_legacy_administrator_line_inputs_environment_and_state_are_absent() -> 
     inputs = triggers["workflow_dispatch"]["inputs"]
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    assert set(inputs) == {"dry_run", "line_shadow_only"}
-    assert set(job["env"]) == {"DRY_RUN", "LINE_SHADOW_ONLY"}
+    assert set(inputs) == {"dry_run", "line_shadow_only", "line_dispatch_only"}
+    assert set(job["env"]) == {
+        "DRY_RUN",
+        "LINE_SHADOW_ONLY",
+        "LINE_DISPATCH_ONLY",
+    }
     for legacy_reference in (
         "LINE_CHANNEL_ACCESS_TOKEN",
         "LINE_USER_ID",
@@ -359,6 +369,7 @@ def test_run_name_distinguishes_all_execution_modes() -> None:
     assert workflow["run-name"] == (
         "Update tennis availability "
         "[${{ github.event_name == 'schedule' && 'scheduled-live' || "
+        "inputs.line_dispatch_only && 'manual-line-dispatch' || "
         "inputs.line_shadow_only && 'manual-line-shadow' || "
         "inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]"
     )
@@ -379,7 +390,9 @@ def test_update_checkout_uses_live_branch_head_and_dry_run_event_sha() -> None:
     assert source_ref["run"] == (
         'if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then\n'
         '  echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"\n'
-        'elif [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then\n'
+        'elif [[ "${DRY_RUN}" == "true" ||\n'
+        '        "${LINE_SHADOW_ONLY}" == "true" ||\n'
+        '        "${LINE_DISPATCH_ONLY}" == "true" ]]; then\n'
         '  echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"\n'
         "else\n"
         '  echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"\n'
@@ -424,12 +437,14 @@ def test_dry_run_acquires_artifacts_without_commit_push_or_pages_deploy() -> Non
     )
     assert dry_run["default"] is True
     assert (
-        'if [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]'
+        'if [[ "${DRY_RUN}" == "true" ||'
         in execution_step["run"]
     )
     assert 'echo "deploy_pages=false"' in execution_step["run"]
     assert commit_step["if"] == (
-        "env.DRY_RUN != 'true' && env.LINE_SHADOW_ONLY != 'true'"
+        "env.DRY_RUN != 'true' && "
+        "env.LINE_SHADOW_ONLY != 'true' && "
+        "env.LINE_DISPATCH_ONLY != 'true'"
     )
     assert workflow["jobs"]["deploy-pages"]["if"] == (
         "needs.update.result == 'success' && "
@@ -463,6 +478,48 @@ def test_line_shadow_only_forces_no_delivery_email_or_repository_writes() -> Non
     assert "env.LINE_SHADOW_ONLY != 'true'" in named_step(
         workflow, "Dispatch user LINE notifications"
     )["if"]
+
+
+def test_line_dispatch_only_skips_every_non_dispatch_side_effect() -> None:
+    workflow = load_workflow()
+    inputs = workflow_triggers(workflow)["workflow_dispatch"]["inputs"]
+    job = workflow["jobs"]["update"]
+    execution = named_step(workflow, "Determine execution mode")
+
+    assert inputs["line_dispatch_only"] == {
+        "description": (
+            "Dispatch existing LINE queue only; skip scraping, email, enqueue, "
+            "artifacts, and repository writes"
+        ),
+        "type": "boolean",
+        "default": False,
+    }
+    assert job["env"]["LINE_DISPATCH_ONLY"] == (
+        "${{ github.event_name == 'workflow_dispatch' && "
+        "inputs.line_dispatch_only || false }}"
+    )
+    assert "LINE dispatch-only requires dry_run=false" in execution["run"]
+    assert '"${LINE_DISPATCH_ONLY}" == "true"' in execution["run"]
+    assert 'echo "deploy_pages=false"' in execution["run"]
+
+    skipped_steps = (
+        "Install dependencies",
+        "Run tests",
+        "Update availability",
+        "Match notification rules",
+        "Enqueue user email notifications",
+        "Dispatch user email notifications",
+        "Enqueue user LINE notifications",
+        "Upload run data and reservation page snapshots",
+        "Commit changed availability",
+    )
+    for name in skipped_steps:
+        assert "env.LINE_DISPATCH_ONLY != 'true'" in named_step(
+            workflow, name
+        )["if"]
+
+    dispatch = named_step(workflow, "Dispatch user LINE notifications")
+    assert "env.LINE_DISPATCH_ONLY != 'true'" not in dispatch["if"]
 
 
 def test_non_dry_run_commits_only_availability() -> None:
