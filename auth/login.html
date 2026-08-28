@@ -6,7 +6,7 @@
     <meta name="referrer" content="no-referrer">
     <meta
       name="description"
-      content="Tennis Court Watcherのメールマジックリンクによるログイン・会員登録画面です。"
+      content="Tennis Court WatcherのLINEを使ったログイン・会員登録画面です。"
     >
     <title>ログイン・会員登録 | Tennis Court Watcher</title>
     <link rel="stylesheet" href="../assets/css/auth.css">
@@ -30,10 +30,10 @@
       <div class="auth-layout">
         <section aria-labelledby="page-title">
           <p class="eyebrow">会員ログイン</p>
-          <h1 id="page-title">メールでログイン</h1>
+          <h1 id="page-title">LINEでログイン</h1>
           <p class="lead">
-            メールアドレスに届くリンクからログインします。
-            初めて利用する方は、同じ画面から会員登録できます。
+            「LINEではじめる」から、会員登録とログインができます。
+            メールアドレスの登録は必須ではありません。
           </p>
         </section>
 
@@ -51,79 +51,72 @@
               [data-login-session-status] { display: none; }
             </style>
             <p class="notice">
-              ログイン状態の確認とマジックリンクの送信にはJavaScriptが必要です。
+              ログイン状態の確認と認証にはJavaScriptが必要です。
               JavaScriptを有効にして、このページを再読み込みしてください。
             </p>
           </noscript>
-          <p class="notice">
-            マジックリンクは、原則としてこの画面を開いた同じブラウザで開いてください。
+          <h2 id="form-title">LINEではじめる</h2>
+          <p class="session-guidance">
+            初めての方は、LINE認証後に利用規約へ同意すると登録が完了します。
           </p>
-          <h2 id="form-title" data-auth-form-title>ログイン用リンクを受け取る</h2>
-          <form data-auth-form novalidate hidden>
-            <div class="auth-mode-switch" aria-label="ログインまたは会員登録">
-              <button
-                class="auth-mode-button"
-                type="button"
-                data-auth-mode="login"
-                aria-pressed="true"
-              >
-                ログイン
-              </button>
-              <button
-                class="auth-mode-button"
-                type="button"
-                data-auth-mode="signup"
-                aria-pressed="false"
-              >
-                初めての方
-              </button>
-            </div>
-            <p class="session-guidance" data-auth-mode-guidance>
-              登録済みのメールアドレスを入力してください。
-            </p>
-            <div class="field">
-              <label for="email">メールアドレス</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autocomplete="email"
-                inputmode="email"
-                placeholder="name@example.com"
-                required
-              >
-            </div>
-            <div data-signup-consent hidden>
-              <label class="consent" for="terms-consent">
-                <input
-                  id="terms-consent"
-                  name="terms-consent"
-                  type="checkbox"
+          <button
+            class="button line-login-button"
+            type="button"
+            data-line-auth-start
+            disabled
+          >
+            LINEではじめる
+          </button>
+          <p class="status-text" data-line-auth-status aria-live="polite"></p>
+
+          <details class="email-auth-fallback" data-email-auth-fallback>
+            <summary>予備メールでログインする</summary>
+            <div class="email-auth-fallback__content">
+              <p class="notice">
+                メールのリンクは、原則としてこの画面を開いた同じブラウザで開いてください。
+              </p>
+              <h2>予備メールのログイン用リンクを受け取る</h2>
+              <form data-auth-form novalidate hidden>
+                <p class="session-guidance">
+                  マイページで登録・確認済みの予備メールアドレスを入力してください。
+                </p>
+                <div class="field">
+                  <label for="email">メールアドレス</label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autocomplete="email"
+                    inputmode="email"
+                    placeholder="name@example.com"
+                    required
+                  >
+                </div>
+                <button
+                  class="button button--secondary"
+                  type="submit"
                   disabled
+                  aria-describedby="form-note persistent-session-note"
                 >
-                <span>
-                  <a href="../legal/terms.html">利用規約</a>と
-                  <a href="../legal/privacy.html">プライバシーポリシー</a>
-                  を確認し、利用規約に同意します。
-                </span>
-              </label>
+                  ログイン用リンクを送る
+                </button>
+                <p id="persistent-session-note" class="form-note session-note">
+                  共有端末では、利用後にログアウトしてください。
+                </p>
+                <p id="form-note" class="form-note">
+                  有効なメールアドレスを入力すると送信できます。
+                </p>
+                <p class="status-text" data-form-status aria-live="polite"></p>
+              </form>
             </div>
-            <button
-              class="button"
-              type="submit"
-              disabled
-              aria-describedby="form-note persistent-session-note"
-            >
-              ログイン用リンクを送る
-            </button>
-            <p id="persistent-session-note" class="form-note session-note">
-              共有端末では、利用後にログアウトしてください。
-            </p>
-            <p id="form-note" class="form-note" data-auth-form-note>
-              有効なメールアドレスを入力すると送信できます。
-            </p>
-            <p class="status-text" data-form-status aria-live="polite"></p>
-          </form>
+          </details>
+
+          <p class="form-note recovery-guidance">
+            LINEアカウントを利用できなくなった場合は、新しいLINEで登録できます。
+            旧アカウントの削除を希望する場合は、
+            <a href="../legal/terms.html#contact">利用規約のお問い合わせ先</a>
+            へご連絡ください。
+          </p>
         </section>
       </div>
     </main>

@@ -17,7 +17,7 @@ def test_launch_readiness_records_source_permission_and_monitoring_scope() -> No
     assert "取得元から公開空き情報の自動確認・表示・通知について利用許可を取得済み" in roadmap
 
 
-def test_phase4_design_keeps_email_auth_and_same_line_provider() -> None:
+def test_phase4_design_uses_line_first_auth_and_same_line_provider() -> None:
     design = (ROOT / "docs/PHASE4_LINE_NOTIFICATION_DESIGN.md").read_text(
         encoding="utf-8"
     )
@@ -25,7 +25,9 @@ def test_phase4_design_keeps_email_auth_and_same_line_provider() -> None:
         encoding="utf-8"
     )
 
-    assert "Supabase Authメールマジックリンクを会員認証の正" in design
+    assert "LINE Login v2.1を、会員登録・ログインの主導線" in design
+    assert "メールマジックリンクは任意の予備ログイン手段" in design
+    assert "メール通知は初期OFF" in design
     assert "LINE Login v2.1" in design
     assert "同じLINE provider" in design
     assert "x-line-signature" in design

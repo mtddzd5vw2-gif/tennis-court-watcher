@@ -1,9 +1,9 @@
 # Tennis Court Watcher
 
-鹿児島市のテニスコート予約サイトを確認し、直近15日間の土日祝にある8:00〜13:00の空き候補を、GitHub Pagesと利用者別メールで知らせるプロジェクトです。
+鹿児島市のテニスコート予約サイトを確認し、直近15日間の土日祝にある8:00〜13:00の空き候補を、GitHub Pagesと利用者別LINE・メールで知らせるプロジェクトです。
 
 > [!IMPORTANT]
-> 鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場の空き取得は、いずれも認証不要の実画面に対応済みです。スクレイパーは予約サイトの利用者ID・パスワードを使用・保存せず、自動予約も行いません。会員ログインはこれとは分離したSupabase Authのメールマジックリンクを使用します。
+> 鴨池県営テニスコート、SuMIzeiテニスコート、東開庭球場の空き取得は、いずれも認証不要の実画面に対応済みです。スクレイパーは予約サイトの利用者ID・パスワードを使用・保存せず、自動予約も行いません。会員ログインはこれとは分離したSupabase AuthのLINEログインを主導線とし、メールマジックリンクは任意の予備手段として提供します。
 
 > [!NOTE]
 > 取得元から公開空き情報の自動確認・表示・通知について利用許可を取得済みです。認証情報を使わない現在の範囲を維持し、アクセス頻度、失敗率、HTTP 403/429、予約サイトの規約・仕様変更を継続監視します。判断根拠と運用指標は[Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)を参照してください。
@@ -41,7 +41,7 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 - 空きなしの正常取得日は初期状態で折りたたみ、施設ごとに表示を切り替え
 - 成功・失敗を問わず診断用HTMLとPNGを保存
 - pytest、GitHub Actions、Pages自動配信
-- Supabase Authのメールマジックリンク送信、PKCE callback、セッション確認、ログアウト
+- Supabase AuthのLINEログイン、任意のメールマジックリンク、PKCE callback、セッション確認、ログアウト
 - 認証用画面（ログイン・会員登録、認証callback、マイページ、利用規約、プライバシーポリシー）
 - active会員向け通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI
 - 会員向け空き通知で土曜・日曜・日本の祝日を個別選択し、8:00〜13:00内の時間帯と利用時間を選ぶUI
@@ -59,30 +59,30 @@ Phase別設計書は詳細設計と実装履歴を含みます。
 
 ## Phase 1 認証プロジェクト基盤
 
-2026-08-04時点で、Supabase Auth、メールのマジックリンク認証、GitHub Pages、PKCEを正式方針としました。ブラウザは固定版 `@supabase/supabase-js@2.106.2` を使用し、公開Project URLとpublishable keyだけで接続します。`flowType: "pkce"`、`persistSession: true`、`autoRefreshToken: true` を明示しています。
+Supabase Auth、GitHub Pages、PKCEを認証基盤とします。2026-08-28にLINE Loginを会員登録・ログインの主導線へ変更し、メールのマジックリンクは任意の予備ログイン手段へ変更しました。ブラウザは固定版 `@supabase/supabase-js@2.106.2` を使用し、公開Project URLとpublishable keyだけで接続します。`flowType: "pkce"`、`persistSession: true`、`autoRefreshToken: true` を明示しています。
 
 本番の認証メールはResend Custom SMTPを使用し、送信用サブドメインは `email.tenniscourtwatcher.com` です。初回登録用と通常ログイン用の日本語テンプレートを分け、Supabase Organization Teamに所属していない一般メールアドレスで初回登録・通常ログイン・配信を確認済みです。Resend APIキーやSMTP passwordなどの秘密値はリポジトリへ保存しません。設定、テンプレート、確認手順、障害対応は [Auth Email Operations](docs/AUTH_EMAIL_OPERATIONS.md) を参照してください。
 
-実装済みの範囲は、メール形式・利用規約同意の確認、`signInWithOtp` によるマジックリンク送信、codeの `exchangeCodeForSession`、認証URLの消去、`getSession` によるログイン画面とマイページのセッション確認、会員profileと規約同意履歴の本人表示、現行規約への同意、現在のブラウザを対象にした `signOut({ scope: "local" })` です。成功・失敗文言からアカウントの存在有無を推測しにくくし、メールアドレス・code・token・認証URLをconsoleへ出しません。
+実装済みの範囲は、`signInWithOAuth({ provider: "custom:line" })` によるLINEログイン、任意の `signInWithOtp` メールログイン、codeの `exchangeCodeForSession`、認証URLの消去、`getSession` によるセッション確認、会員profileと規約同意、予備メール追加、現在のブラウザを対象にした `signOut({ scope: "local" })` です。LINE認証で得た本人の識別子はサーバー側で通知先へ結び付け、ブラウザへ表示しません。LINE登録者のメール通知は初期OFFです。
 
 `persistSession: true` と `autoRefreshToken: true` により、ログアウトしない限り、同じブラウザでは通常セッションが保持されます。ログインページはフォーム表示前に既存セッションを確認し、ログイン済みならマイページへ移動します。ブラウザを閉じても通常は次回そのまま利用できますが、ログアウト、ブラウザデータの削除、セッションの無効化、別の端末やブラウザからの利用時には再認証が必要です。ログアウトは操作したブラウザのセッションだけを終了し、全端末ログアウトは行いません。このセッション確認は画面UXのためのもので、会員データの最終的な認可境界は引き続きPostgreSQLのRLSです。
 
 PKCEのcode verifierはリンクを要求したブラウザ側に保存されるため、マジックリンクは原則としてログイン操作を開始した同じブラウザで開く必要があります。別端末・別ブラウザで開いて認証に失敗した場合は、利用するブラウザでログイン画面から再送してください。
 
-`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260806000000_fix_accept_current_terms_conflict.sql` は、適用済みの関数を制約名指定の `ON CONFLICT` へ置き換えます。`20260821034956_finalize_terms_version.sql` は正式規約 `2026-08-21` をcurrentへ切り替え、過去の同意履歴を保持したままactive会員へ再同意を要求します。ブラウザから会員データを直接変更する権限はなく、同意登録だけをRPCへ集約します。退会Edge Functionと二段階確認UIは2026-08-19に実装し、2026-08-20に本番deployとproduction acceptanceを完了しました。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されることも本番で確認済みです。Phase 4はLINE account link、利用者別queue/worker、本番単一会員canaryまで完了しました。Messaging API webhookは既存Google Apps Scriptを維持する署名済みpass-through bridgeを追加し、切替acceptanceを進めています。課金は未実装です。
+`supabase/migrations/20260804000000_create_member_profiles.sql` に `legal_document_versions`、`profiles`、`terms_acceptances`、新規Authユーザー用trigger、既存ユーザーbackfill、RLS、最小権限Grant、引数なしの `accept_current_terms()` RPCを実装しています。`20260828082431_line_first_authentication.sql` は現行規約 `2026-08-28`、LINE Auth identityから通知先を安全に同期するRPC、メール通知初期OFFを確定します。ブラウザから会員データを直接変更する権限はなく、同意登録とLINE識別子の同期を本人JWT付きRPCへ集約します。退会Edge Functionと二段階確認UIは本番確認済みです。本人JWTから利用者を確定し、membership_statusをwithdrawal_pendingへロックしてからサーバー側特権処理でAuthユーザーを削除します。Authユーザー削除後に関連する利用者所有データがFK cascadeで削除されます。Phase 4のLINE account link、利用者別queue/worker、全会員向け配信は本番運転中です。Messaging API webhookは既存Google Apps Scriptを維持する署名済みpass-through bridgeを使用します。課金は未実装です。
 
-正式な現行規約版は `2026-08-21`、発効日は2026-08-21です。運営者はグランドスラム（鹿児島市内テニスサークル）で、問い合わせ先は法務ページに簡易難読化して表示します。重要な規約改定では新しい版を追加し、過去の同意履歴を保持したまま再同意を求めます。
+正式な現行規約版は `2026-08-28`、発効日は2026-08-28です。運営者はグランドスラム（鹿児島市内テニスサークル）で、問い合わせ先は法務ページに簡易難読化して表示します。重要な規約改定では新しい版を追加し、過去の同意履歴を保持したまま再同意を求めます。
 
 追加した画面は次のとおりです。すべてGitHub Pagesのリポジトリ配下で動く相対リンクを使用します。
 
-- `auth/login.html`: マジックリンクによるログイン・会員登録画面
-- `auth/callback.html`: メール認証callback画面
+- `auth/login.html`: LINE主導、メール任意のログイン・会員登録画面
+- `auth/callback.html`: LINE・メール共通の認証callback画面
 - `account/index.html`: 最小限のマイページ
 - `account/notifications.html`: 空き通知の一覧・作成・編集・停止・有効化・削除画面
 - `legal/terms.html`: 正式な利用規約
 - `legal/privacy.html`: 正式なプライバシーポリシー
 
-法務ページは2026-08-21に正式化し、運営者、問い合わせ窓口、版番号、発効日、取得情報、利用目的、委託先、第三者提供、90日通知データ保持、退会時削除、開示等請求、規約改定時の再同意を確定しました。詳細は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
+法務ページは2026-08-21に正式化し、2026-08-28にLINE主導認証へ対応しました。運営者、問い合わせ窓口、版番号、発効日、取得情報、利用目的、委託先、第三者提供、90日通知データ保持、退会時削除、開示等請求、規約改定時の再同意を確定しています。詳細は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
 
 Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限し、`20260821022637_add_configurable_notification_targets.sql` は祝日選択と監視範囲内の時間帯選択を追加します。DB triggerが最終的な件数強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4はLINE account linkを本番反映し、利用者別LINE配信の安全な実装を初期OFFで追加しています。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 

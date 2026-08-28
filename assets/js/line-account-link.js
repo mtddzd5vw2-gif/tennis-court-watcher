@@ -195,6 +195,10 @@
       start.disabled = true;
       unlinkStart.disabled = true;
       try {
+        const syncResponse = await client.rpc("sync_my_line_auth_identity");
+        if (syncResponse.error) {
+          throw new Error("line_auth_identity_sync_failed");
+        }
         const response = await client.rpc("get_my_line_link_status");
         if (response.error || !Array.isArray(response.data)) {
           throw new Error("line_link_status_unavailable");

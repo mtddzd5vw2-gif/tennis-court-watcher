@@ -185,7 +185,7 @@ def test_account_and_notification_pages_link_to_each_other_and_availability() ->
     assert notifications.find("a", href="../index.html")
 
 
-def test_availability_header_offers_signup_first_availability_alert_route() -> None:
+def test_availability_header_offers_line_first_availability_alert_route() -> None:
     index = BeautifulSoup(read(INDEX_PATH), "html.parser")
     navigation = index.find(class_="account-navigation")
 
@@ -193,7 +193,7 @@ def test_availability_header_offers_signup_first_availability_alert_route() -> N
         strip=True
     ) == "マイページ"
     assert navigation.find(
-        "a", href="auth/login.html?mode=signup&next=notifications"
+        "a", href="auth/login.html?next=notifications"
     ).get_text(strip=True) == "空き通知"
 
 

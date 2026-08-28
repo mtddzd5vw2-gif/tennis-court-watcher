@@ -48,14 +48,15 @@ shadow、live enqueue、dispatch-onlyを順に確認した。候補・queue・�
 
 ## 2. 採用方式
 
-次の構成を採用する。
+2026-08-28のLINE-first認証決定により、初期の「メール認証を正としLINEは追加連携だけに使う」方式を次の構成へ更新する。
 
-- 既存のSupabase Authメールマジックリンクを会員認証の正として維持する。
-- LINE Login v2.1を、ログイン済み会員とLINEアカウントの連携にだけ使用する。
+- Supabase Authのcustom OAuth provider経由のLINE Login v2.1を、会員登録・ログインの主導線にする。
+- メールマジックリンクは任意の予備ログイン手段として維持する。
 - LINE Messaging APIを、友だち追加、block/unfollow反映、利用者別通知配信に使用する。
 - LINE Login channelとMessaging API channelは、必ず同じLINE providerへ作成する。
 - LINE Login channelへLINE公式アカウントを関連付け、add friend optionを使用する。
-- LINEを唯一のログイン手段にせず、メール認証を省略しない。
+- LINE Auth identityの検証済みprovider IDを、本人かつactive会員だけが実行できるRPCで通知先へ同期する。
+- メールアドレス未登録を許可し、LINE登録者のメール通知は初期OFFとする。
 
 同一providerではLINE LoginとMessaging APIで同じLINE user IDが発行される。
 この性質を利用し、ブラウザで認証されたLINE accountと通知先を一致させる。

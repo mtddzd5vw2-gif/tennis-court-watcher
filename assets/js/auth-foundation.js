@@ -4,6 +4,7 @@
   const LOGIN_PATH = "../auth/login.html";
   const ACCOUNT_PATH = "../account/index.html";
   const NOTIFICATIONS_PATH = "../account/notifications.html";
+  const LINE_AUTH_PROVIDER = "custom:line";
   const PENDING_TERMS_KEY = "tcw.pendingTermsAcceptance";
   const PENDING_DESTINATION_KEY = "tcw.pendingAuthDestination";
   const LOGIN_SESSION_TIMEOUT_MS = 8000;
@@ -70,25 +71,12 @@
     }
   }
 
-  function rememberPendingTermsAcceptance() {
-    try {
-      window.sessionStorage.setItem(PENDING_TERMS_KEY, "1");
-    } catch {
-      // Authentication can continue. The account page provides a retry path.
-    }
-  }
-
   function clearPendingTermsAcceptance() {
     try {
       window.sessionStorage.removeItem(PENDING_TERMS_KEY);
     } catch {
       // The marker contains no account data and expires with this browser tab.
     }
-  }
-
-  function requestedAuthMode() {
-    const parameters = new URLSearchParams(window.location.search);
-    return parameters.get("mode") === "signup" ? "signup" : "login";
   }
 
   function requestedDestination() {
@@ -124,82 +112,29 @@
     }
   }
 
-  function isMissingLoginAccount(error, requestMode) {
+  function isMissingLoginAccount(error) {
     return (
-      requestMode === "login" &&
       error &&
       error.status === 422 &&
       error.code === "otp_disabled"
     );
   }
 
-  function enableLoginForm(client, config, form, initialMode, destination) {
+  function enableLoginForm(client, config, form, destination) {
     const emailInput = form.elements.email;
-    const consentInput = form.elements["terms-consent"];
     const submitButton = form.querySelector('button[type="submit"]');
     const status = form.querySelector("[data-form-status]");
-    const formTitle = document.querySelector("[data-auth-form-title]");
-    const modeGuidance = form.querySelector("[data-auth-mode-guidance]");
-    const formNote = form.querySelector("[data-auth-form-note]");
-    const signupConsent = form.querySelector("[data-signup-consent]");
-    const modeButtons = Array.from(
-      form.querySelectorAll("[data-auth-mode]"),
-    );
     let submitting = false;
-    let authMode = "login";
-
-    const isSignup = () => authMode === "signup";
 
     const isValid = () =>
       emailInput.value.trim() !== "" &&
-      emailInput.validity.valid &&
-      (!isSignup() || consentInput.checked);
+      emailInput.validity.valid;
 
     const updateSubmitState = () => {
       submitButton.disabled = submitting || !isValid();
     };
 
-    const setMode = (nextMode) => {
-      if (submitting || !["login", "signup"].includes(nextMode)) {
-        return;
-      }
-      authMode = nextMode;
-      const signup = isSignup();
-      for (const button of modeButtons) {
-        button.setAttribute(
-          "aria-pressed",
-          String(button.dataset.authMode === authMode),
-        );
-      }
-      signupConsent.hidden = !signup;
-      consentInput.disabled = !signup;
-      consentInput.required = signup;
-      if (!signup) {
-        consentInput.checked = false;
-      }
-      formTitle.textContent = signup
-        ? "会員登録用リンクを受け取る"
-        : "ログイン用リンクを受け取る";
-      modeGuidance.textContent = signup
-        ? "初めて利用するメールアドレスを入力し、利用規約を確認してください。"
-        : "登録済みのメールアドレスを入力してください。";
-      formNote.textContent = signup
-        ? "メールアドレスと利用規約への同意を確認すると送信できます。"
-        : "有効なメールアドレスを入力すると送信できます。";
-      submitButton.textContent = signup
-        ? "会員登録用リンクを送る"
-        : "ログイン用リンクを送る";
-      setStatus(status, "");
-      updateSubmitState();
-    };
-
     emailInput.addEventListener("input", updateSubmitState);
-    consentInput.addEventListener("change", updateSubmitState);
-    for (const button of modeButtons) {
-      button.addEventListener("click", () => {
-        setMode(button.dataset.authMode);
-      });
-    }
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (submitting || !isValid()) {
@@ -208,7 +143,6 @@
       }
 
       submitting = true;
-      const requestMode = authMode;
       updateSubmitState();
       setStatus(status, "送信しています…");
 
@@ -217,21 +151,16 @@
           email: emailInput.value.trim(),
           options: {
             emailRedirectTo: config.authCallbackUrl,
-            shouldCreateUser: requestMode === "signup",
+            shouldCreateUser: false,
           },
         })
         .then(({ error }) => {
-          if (error && !isMissingLoginAccount(error, requestMode)) {
+          if (error && !isMissingLoginAccount(error)) {
             throw new Error("magic_link_request_failed");
           }
-          if (requestMode === "signup") {
-            rememberPendingTermsAcceptance();
-          } else {
-            clearPendingTermsAcceptance();
-          }
+          clearPendingTermsAcceptance();
           rememberPendingDestination(destination);
           form.reset();
-          setMode(requestMode);
           setStatus(
             status,
             "メールを確認してください。リンクを送信できる場合は、まもなく届きます。",
@@ -251,7 +180,7 @@
         });
     });
 
-    setMode(initialMode);
+    updateSubmitState();
     form.hidden = false;
   }
 
@@ -271,15 +200,55 @@
     }
   }
 
+  function enableLineLogin(client, config, button, status, destination) {
+    let starting = false;
+    button.disabled = false;
+
+    button.addEventListener("click", async () => {
+      if (starting) {
+        return;
+      }
+      starting = true;
+      button.disabled = true;
+      setStatus(status, "LINEを開いています…");
+      clearPendingTermsAcceptance();
+      rememberPendingDestination(destination);
+
+      try {
+        const { error } = await client.auth.signInWithOAuth({
+          provider: LINE_AUTH_PROVIDER,
+          options: {
+            redirectTo: config.authCallbackUrl,
+            queryParams: {
+              bot_prompt: "aggressive",
+            },
+          },
+        });
+        if (error) {
+          throw new Error("line_login_failed");
+        }
+      } catch {
+        starting = false;
+        button.disabled = false;
+        setStatus(
+          status,
+          "LINEログインを開始できませんでした。時間をおいて、もう一度お試しください。",
+          "error",
+        );
+      }
+    });
+  }
+
   async function setupLogin(client, config) {
     const form = document.querySelector("[data-auth-form]");
+    const lineButton = document.querySelector("[data-line-auth-start]");
+    const lineStatus = document.querySelector("[data-line-auth-status]");
     const sessionStatus = document.querySelector(
       "[data-login-session-status]",
     );
-    if (!form || !sessionStatus) {
+    if (!form || !lineButton || !lineStatus || !sessionStatus) {
       return;
     }
-    const initialMode = requestedAuthMode();
     const destination = requestedDestination();
 
     try {
@@ -310,7 +279,8 @@
       );
     }
 
-    enableLoginForm(client, config, form, initialMode, destination);
+    enableLineLogin(client, config, lineButton, lineStatus, destination);
+    enableLoginForm(client, config, form, destination);
   }
 
   async function handleCallback(client) {
@@ -333,7 +303,7 @@
       return;
     }
 
-    setStatus(status, "メール認証を確認しています…");
+    setStatus(status, "認証を確認しています…");
     try {
       const { error } = await client.auth.exchangeCodeForSession(code);
       if (error) {
@@ -365,6 +335,17 @@
     const loading = document.querySelector("[data-account-loading]");
     const content = document.querySelector("[data-account-content]");
     const email = document.querySelector("[data-account-email]");
+    const backupEmailGuidance = document.querySelector(
+      "[data-backup-email-guidance]",
+    );
+    const backupEmailForm = document.querySelector("[data-backup-email-form]");
+    const backupEmailInput = backupEmailForm &&
+      backupEmailForm.elements["backup-email"];
+    const backupEmailButton = backupEmailForm &&
+      backupEmailForm.querySelector('button[type="submit"]');
+    const backupEmailStatus = document.querySelector(
+      "[data-backup-email-status]",
+    );
     const consentPanel = document.querySelector("[data-terms-consent-panel]");
     const consentInput = document.querySelector("[data-account-terms-consent]");
     const consentButton = document.querySelector("[data-accept-current-terms]");
@@ -396,9 +377,62 @@
       return;
     }
 
-    email.textContent = session.user && session.user.email
+    const accountEmail = session.user && session.user.email
       ? session.user.email
-      : "確認済み";
+      : "";
+    email.textContent = accountEmail || "LINEでログイン中";
+    if (backupEmailGuidance) {
+      backupEmailGuidance.textContent = accountEmail
+        ? "このメールアドレスは、予備のログイン手段として利用できます。"
+        : "メールは任意です。LINEを利用できない場合に備えて、予備のログイン手段を追加できます。";
+    }
+    if (
+      !accountEmail &&
+      backupEmailForm &&
+      backupEmailInput &&
+      backupEmailButton
+    ) {
+      backupEmailForm.hidden = false;
+      const updateBackupEmailButton = () => {
+        backupEmailButton.disabled =
+          !backupEmailInput.value.trim() || !backupEmailInput.validity.valid;
+      };
+      backupEmailInput.addEventListener("input", updateBackupEmailButton);
+      backupEmailForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (backupEmailButton.disabled) {
+          return;
+        }
+        backupEmailInput.disabled = true;
+        backupEmailButton.disabled = true;
+        setStatus(backupEmailStatus, "確認メールを送っています…");
+        rememberPendingDestination(ACCOUNT_PATH);
+        try {
+          const { error } = await client.auth.updateUser(
+            { email: backupEmailInput.value.trim() },
+            { emailRedirectTo: getAuthConfig().authCallbackUrl },
+          );
+          if (error) {
+            throw new Error("backup_email_update_failed");
+          }
+          backupEmailForm.reset();
+          setStatus(
+            backupEmailStatus,
+            "確認メールを送りました。メール内のリンクを開くと登録が完了します。",
+            "success",
+          );
+        } catch {
+          setStatus(
+            backupEmailStatus,
+            "確認メールを送れませんでした。時間をおいて、もう一度お試しください。",
+            "error",
+          );
+        } finally {
+          backupEmailInput.disabled = false;
+          updateBackupEmailButton();
+        }
+      });
+    }
     content.hidden = false;
     logout.disabled = false;
     deleteStart.disabled = false;

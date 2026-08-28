@@ -76,6 +76,7 @@
 
   let client;
   let userId;
+  let userHasEmail = false;
   let facilities = [];
   let rules = [];
   let ruleFacilities = [];
@@ -172,6 +173,7 @@
     if (emailPreferenceToggle) {
       emailPreferenceToggle.disabled =
         emailPreferenceBusy ||
+        !userHasEmail ||
         (emailPreference !== null &&
           PROVIDER_SUPPRESSION_REASONS.has(emailPreference.disabled_reason));
     }
@@ -179,6 +181,14 @@
 
   function renderEmailPreference() {
     if (!emailPreference || !emailPreferenceToggle) {
+      return;
+    }
+
+    if (!userHasEmail) {
+      emailPreferenceToggle.checked = false;
+      emailPreferenceGuidance.textContent =
+        "メールアドレス未登録のため、メール通知は停止中です。必要な場合はマイページで予備メールを登録してください。";
+      updateActionAvailability();
       return;
     }
 
@@ -782,6 +792,11 @@
     if (!emailPreference || emailPreferenceBusy) {
       return;
     }
+    if (!userHasEmail) {
+      emailPreferenceToggle.checked = false;
+      renderEmailPreference();
+      return;
+    }
     if (PROVIDER_SUPPRESSION_REASONS.has(emailPreference.disabled_reason)) {
       emailPreferenceToggle.checked = false;
       renderEmailPreference();
@@ -1056,6 +1071,9 @@
       return;
     }
     userId = session.user.id;
+    userHasEmail =
+      typeof session.user.email === "string" &&
+      session.user.email.trim() !== "";
 
     setStatus(loading, "会員状態を確認しています…");
     let profileResult;

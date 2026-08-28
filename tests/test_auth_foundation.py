@@ -48,6 +48,11 @@ FINAL_TERMS_VERSION_MIGRATION = (
     / "supabase/migrations"
     / "20260821034956_finalize_terms_version.sql"
 )
+LINE_FIRST_AUTH_MIGRATION = (
+    ROOT
+    / "supabase/migrations"
+    / "20260828082431_line_first_authentication.sql"
+)
 MOCK_AUTH_CONFIG = """window.TCW_AUTH_CONFIG = Object.freeze({
   supabaseUrl: "https://project.example.supabase.co",
   supabasePublishableKey: "sb_publishable_test_public_only",
@@ -61,7 +66,7 @@ window.supabase = {
     window.__authCalls = window.__authCalls || [];
     window.__dataCalls = window.__dataCalls || [];
     const mock = window.__mockAuth || {};
-    const currentVersion = mock.currentVersion || "2026-08-21";
+    const currentVersion = mock.currentVersion || "2026-08-28";
     const acceptedAt = mock.acceptedAt || "2026-08-04T01:30:00Z";
 
     function resultFor(table) {
@@ -102,6 +107,13 @@ window.supabase = {
 
     return {
       auth: {
+        async signInWithOAuth(payload) {
+          window.__authCalls.push({ method: "signInWithOAuth", payload });
+          return {
+            data: { url: "https://access.line.me/oauth2/v2.1/authorize?mock=1" },
+            error: mock.lineAuthError ? { name: "AuthError" } : null,
+          };
+        },
         signInWithOtp(payload) {
           window.__authCalls.push({ method: "signInWithOtp", payload });
           window.sessionStorage.setItem("mock-sign-in-called", "true");
@@ -143,12 +155,18 @@ window.supabase = {
           return {
             data: {
               session:
-                mock.sessionEmail &&
+                (mock.sessionEmail || mock.sessionProvider) &&
                 !window.sessionStorage.getItem("mock-signed-out")
                 ? {
                     user: {
-                      email: mock.sessionEmail,
-                      email_confirmed_at: "2026-08-04T00:00:00Z",
+                      id: "00000000-0000-4000-8000-000000000001",
+                      email: mock.sessionEmail || null,
+                      email_confirmed_at: mock.sessionEmail
+                        ? "2026-08-04T00:00:00Z"
+                        : null,
+                      app_metadata: {
+                        provider: mock.sessionProvider || "email",
+                      },
                     },
                   }
                 : null,
@@ -165,6 +183,17 @@ window.supabase = {
             JSON.stringify(options),
           );
           return { error: mock.signOutError ? { name: "AuthError" } : null };
+        },
+        async updateUser(attributes, options) {
+          window.__authCalls.push({
+            method: "updateUser",
+            attributes,
+            options,
+          });
+          return {
+            data: { user: null },
+            error: mock.updateUserError ? { name: "AuthError" } : null,
+          };
         },
       },
       functions: {
@@ -242,6 +271,23 @@ window.supabase = {
       },
       async rpc(name) {
         window.__authCalls.push({ method: "rpc", name });
+        if (name === "sync_my_line_auth_identity") {
+          if (
+            mock.sessionProvider === "custom:line" &&
+            !mock.lineLinkStatus
+          ) {
+            mock.lineLinkStatus = "active";
+            return { data: "linked", error: null };
+          }
+          return {
+            data: mock.sessionProvider === "custom:line"
+              ? "already_present"
+              : "not_line_identity",
+            error: mock.lineSyncError
+              ? { name: "PostgrestError" }
+              : null,
+          };
+        }
         if (name === "get_my_line_link_status") {
           const linkStatus = mock.lineLinkStatus || "";
           return {
@@ -258,7 +304,9 @@ window.supabase = {
               : null,
           };
         }
-        window.sessionStorage.setItem("mock-rpc-called", name);
+        if (name === "accept_current_terms") {
+          window.sessionStorage.setItem("mock-rpc-called", name);
+        }
         if (mock.rpcError) {
           return { data: null, error: { name: "PostgrestError" } };
         }
@@ -283,6 +331,13 @@ window.supabase = {
 
 def read(relative_path: Path | str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def open_email_fallback(page) -> None:
+    details = page.locator("[data-email-auth-fallback]")
+    if details.get_attribute("open") is None:
+        details.locator("summary").click()
+    page.locator("[data-auth-form]").wait_for(state="visible")
 
 
 @pytest.fixture(scope="module")
@@ -501,16 +556,15 @@ def test_auth_pages_load_only_pinned_supabase_sdk_and_do_not_submit_forms() -> N
             assert not form.get("action")
 
     login = BeautifulSoup(read("auth/login.html"), "html.parser")
+    line_button = login.find("button", {"data-line-auth-start": True})
+    assert line_button
+    assert line_button.has_attr("disabled")
+    assert line_button.get_text(" ", strip=True) == "LINEではじめる"
+    assert login.find("details", {"data-email-auth-fallback": True})
     assert login.find("input", {"type": "email"})
-    consent = login.find("input", {"name": "terms-consent"})
-    assert consent.has_attr("disabled")
-    assert not consent.has_attr("required")
-    mode_buttons = login.find_all("button", {"data-auth-mode": True})
-    assert [button["data-auth-mode"] for button in mode_buttons] == [
-        "login",
-        "signup",
-    ]
-    assert [button["aria-pressed"] for button in mode_buttons] == ["true", "false"]
+    assert not login.find("input", {"name": "terms-consent"})
+    assert not login.find(attrs={"data-auth-mode": True})
+    assert "予備メールでログインする" in login.get_text(" ", strip=True)
     assert login.find("button", {"type": "submit"}).has_attr("disabled")
     assert login.find("form", {"data-auth-form": True}).has_attr("hidden")
     session_status = login.find(attrs={"data-login-session-status": True})
@@ -532,6 +586,9 @@ def test_auth_script_uses_pkce_and_does_not_log_credentials() -> None:
     assert "persistSession: true" in script
     assert "autoRefreshToken: true" in script
     assert "signInWithOtp" in script
+    assert "signInWithOAuth" in script
+    assert 'provider: LINE_AUTH_PROVIDER' in script
+    assert 'const LINE_AUTH_PROVIDER = "custom:line"' in script
     assert "exchangeCodeForSession" in script
     assert "getSession" in script
     assert 'signOut({ scope: "local" })' in script
@@ -550,9 +607,8 @@ def test_member_pages_hide_internal_status_and_development_language() -> None:
     login_text = login.get_text(" ", strip=True)
     assert "Phase" not in login_text
     assert "課金" not in login_text
-    assert login.find(attrs={"data-auth-mode": "login"})
-    assert login.find(attrs={"data-auth-mode": "signup"})
-    assert "shouldCreateUser: requestMode === \"signup\"" in script
+    assert not login.find(attrs={"data-auth-mode": True})
+    assert "shouldCreateUser: false" in script
 
     account_text = account.get_text(" ", strip=True)
     assert "アカウント状態" not in account_text
@@ -560,6 +616,8 @@ def test_member_pages_hide_internal_status_and_development_language() -> None:
     assert "最新の規約同意日時" not in account_text
     assert not account.find(id="terms-history-title")
     assert account.find(attrs={"data-account-email": True})
+    assert account.find("form", {"data-backup-email-form": True})
+    assert account.find("input", {"name": "backup-email"})
     for selector in (
         "data-account-email-verified",
         "data-membership-status",
@@ -589,6 +647,7 @@ def test_account_line_link_ui_exposes_only_safe_status_and_confirmed_actions() -
     assert "準備中" not in account.get_text(" ", strip=True)
 
     assert 'client.rpc("get_my_line_link_status")' in script
+    assert 'client.rpc("sync_my_line_auth_identity")' in script
     assert '"start-line-account-link"' in script
     assert '"unlink-line-account"' in script
     assert 'confirmation: "unlink-line-account"' in script
@@ -611,8 +670,8 @@ def test_legal_pages_are_formal_and_publish_operator_contact() -> None:
 
     for page in (terms, privacy):
         text = page.get_text(" ", strip=True)
-        assert "版番号: 2026-08-21" in text
-        assert "発効日: 2026-08-21" in text
+        assert "版番号: 2026-08-28" in text
+        assert "発効日: 2026-08-28" in text
         assert "グランドスラム（鹿児島市内テニスサークル）" in text
         assert "wakahisamk [at] gmail [dot] com" in text
         assert "wakahisamk@gmail.com" not in read(
@@ -653,6 +712,30 @@ def test_formal_terms_migration_preserves_history_and_requires_reconsent() -> No
     assert "profile.membership_status = 'active'" in migration
     assert "not exists" in migration
     assert "acceptance.version = '2026-08-21'" in migration
+    assert "delete from public.terms_acceptances" not in migration
+    assert "truncate" not in migration
+
+
+def test_line_first_auth_migration_links_only_trusted_line_identity() -> None:
+    migration = LINE_FIRST_AUTH_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "'2026-08-28'" in migration
+    assert "timestamptz '2026-08-28 00:00:00+09'" in migration
+    assert "set membership_status = 'pending_terms'" in migration
+    assert "alter column is_enabled set default false" in migration
+    assert "create function public.sync_my_line_auth_identity()" in migration
+    assert "security definer" in migration
+    assert "set search_path = ''" in migration
+    assert "from auth.identities" in migration
+    assert "identity.provider = 'custom:line'" in migration
+    assert "auth.uid()" in migration
+    assert "grant execute on function public.sync_my_line_auth_identity()" in migration
+    assert "to authenticated" in migration
+    assert not re.search(
+        r"grant\s+execute\s+on\s+function\s+"
+        r"public\.sync_my_line_auth_identity\(\)\s+to\s+anon",
+        migration,
+    )
     assert "delete from public.terms_acceptances" not in migration
     assert "truncate" not in migration
 
@@ -1099,6 +1182,7 @@ def test_login_magic_link_validates_input_prevents_duplicates_and_is_neutral(
         "auth/login.html",
         {"delay": 30},
     )
+    open_email_fallback(page)
     email = page.locator('input[name="email"]')
     submit = page.locator('button[type="submit"]')
 
@@ -1155,22 +1239,57 @@ def test_login_magic_link_validates_input_prevents_duplicates_and_is_neutral(
     }
 
 
-def test_signup_requires_terms_consent_and_marks_pending_acceptance(
+def test_line_login_is_primary_and_uses_custom_provider(auth_page_loader) -> None:
+    page, messages = auth_page_loader(
+        "auth/login.html?next=notifications"
+    )
+    line_button = page.locator("[data-line-auth-start]")
+    line_button.wait_for(state="visible")
+
+    assert line_button.inner_text() == "LINEではじめる"
+    assert line_button.is_enabled()
+    assert page.locator("[data-email-auth-fallback]").get_attribute("open") is None
+
+    line_button.click()
+    assert page.evaluate("window.__authCalls") == [
+        {"method": "getSession"},
+        {
+            "method": "signInWithOAuth",
+            "payload": {
+                "provider": "custom:line",
+                "options": {
+                    "redirectTo": (
+                        "http://pages.test/project/auth/callback.html"
+                    ),
+                    "queryParams": {
+                        "bot_prompt": "aggressive",
+                    },
+                },
+            },
+        },
+    ]
+    assert page.evaluate(
+        'window.sessionStorage.getItem("tcw.pendingAuthDestination")'
+    ) == "notifications"
+    assert page.evaluate(
+        'window.sessionStorage.getItem("tcw.pendingTermsAcceptance")'
+    ) is None
+    assert messages == []
+
+
+def test_email_fallback_never_creates_a_new_account(
     auth_page_loader,
 ) -> None:
     page, messages = auth_page_loader("auth/login.html")
-    page.locator('[data-auth-mode="signup"]').click()
+    open_email_fallback(page)
 
     email = page.locator('input[name="email"]')
-    consent = page.locator('input[name="terms-consent"]')
     submit = page.locator('button[type="submit"]')
 
-    assert page.locator("[data-signup-consent]").is_visible()
-    assert consent.is_enabled()
-    assert submit.inner_text() == "会員登録用リンクを送る"
+    assert page.locator("[data-signup-consent]").count() == 0
+    assert page.locator('[data-auth-mode="signup"]').count() == 0
+    assert submit.inner_text() == "ログイン用リンクを送る"
     email.fill("new-member@example.test")
-    assert submit.is_disabled()
-    consent.check()
     assert submit.is_enabled()
     submit.click()
     page.locator('[data-form-status][data-state="success"]').wait_for()
@@ -1185,38 +1304,38 @@ def test_signup_requires_terms_consent_and_marks_pending_acceptance(
                     "emailRedirectTo": (
                         "http://pages.test/project/auth/callback.html"
                     ),
-                    "shouldCreateUser": True,
+                    "shouldCreateUser": False,
                 },
             },
         },
     ]
     assert page.evaluate(
         'window.sessionStorage.getItem("tcw.pendingTermsAcceptance")'
-    ) == "1"
+    ) is None
     assert messages == []
 
 
-def test_availability_alert_route_opens_first_time_mode_and_remembers_target(
+def test_legacy_signup_parameter_does_not_enable_email_signup(
     auth_page_loader,
 ) -> None:
     page, messages = auth_page_loader(
         "auth/login.html?mode=signup&next=notifications"
     )
+    open_email_fallback(page)
     form = page.locator("[data-auth-form]")
     form.wait_for(state="visible")
 
-    assert page.locator('[data-auth-mode="signup"]').get_attribute(
-        "aria-pressed"
-    ) == "true"
-    assert page.locator("[data-signup-consent]").is_visible()
+    assert page.locator('[data-auth-mode="signup"]').count() == 0
+    assert page.locator("[data-signup-consent]").count() == 0
     page.locator('input[name="email"]').fill("new-member@example.test")
-    page.locator('input[name="terms-consent"]').check()
     page.locator('button[type="submit"]').click()
     page.locator('[data-form-status][data-state="success"]').wait_for()
 
     assert page.evaluate(
         'window.sessionStorage.getItem("tcw.pendingAuthDestination")'
     ) == "notifications"
+    sign_in_call = page.evaluate("window.__authCalls[1]")
+    assert sign_in_call["payload"]["options"]["shouldCreateUser"] is False
     assert messages == []
 
 
@@ -1245,6 +1364,7 @@ def test_unknown_login_account_uses_neutral_success_message(
             }
         },
     )
+    open_email_fallback(page)
     page.locator('input[name="email"]').fill("unknown@example.test")
     page.locator('button[type="submit"]').click()
     status = page.locator('[data-form-status][data-state="success"]')
@@ -1266,6 +1386,7 @@ def test_login_service_error_is_not_reported_as_success(auth_page_loader) -> Non
             }
         },
     )
+    open_email_fallback(page)
     page.locator('input[name="email"]').fill("member@example.test")
     submit = page.locator('button[type="submit"]')
     submit.click()
@@ -1293,7 +1414,7 @@ def test_login_checks_session_before_revealing_form_and_shows_it_when_absent(
         "[data-login-session-status]"
     ).inner_text()
 
-    form.wait_for(state="visible")
+    open_email_fallback(page)
     assert page.locator("[data-login-session-status]").is_hidden()
     assert messages == []
 
@@ -1334,7 +1455,7 @@ def test_login_session_check_failure_keeps_magic_link_form_usable(
         {"sessionError": True},
     )
     form = page.locator("[data-auth-form]")
-    form.wait_for(state="visible")
+    open_email_fallback(page)
 
     status = page.locator('[data-login-session-status][data-state="error"]')
     assert "ログイン状態を確認できませんでした" in status.inner_text()
@@ -1464,6 +1585,68 @@ def test_account_checks_session_displays_email_and_signs_out(
     assert page.evaluate(
         'JSON.parse(window.sessionStorage.getItem("mock-sign-out-options"))'
     ) == {"scope": "local"}
+    assert messages == []
+
+
+def test_line_only_account_can_add_optional_backup_email(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {
+            "sessionProvider": "custom:line",
+            "lineLinkStatus": "active",
+        },
+    )
+    page.locator("[data-account-content]:not([hidden])").wait_for()
+
+    assert page.locator("[data-account-email]").inner_text() == "LINEでログイン中"
+    assert page.locator("[data-backup-email-form]").is_visible()
+    assert "メールは任意" in page.locator(
+        "[data-backup-email-guidance]"
+    ).inner_text()
+    backup_email = page.locator('input[name="backup-email"]')
+    submit = page.locator('[data-backup-email-form] button[type="submit"]')
+    assert submit.is_disabled()
+    backup_email.fill("backup@example.test")
+    assert submit.is_enabled()
+    submit.click()
+    page.locator('[data-backup-email-status][data-state="success"]').wait_for()
+
+    update_call = next(
+        call
+        for call in page.evaluate("window.__authCalls")
+        if call["method"] == "updateUser"
+    )
+    assert update_call == {
+        "method": "updateUser",
+        "attributes": {"email": "backup@example.test"},
+        "options": {
+            "emailRedirectTo": "http://pages.test/project/auth/callback.html",
+        },
+    }
+    assert page.evaluate(
+        'window.sessionStorage.getItem("tcw.pendingAuthDestination")'
+    ) is None
+    assert messages == []
+
+
+def test_line_auth_identity_is_synced_without_exposing_identifier(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {"sessionProvider": "custom:line"},
+    )
+    page.locator("[data-line-link-panel]:not([hidden])").wait_for()
+
+    assert "LINE通知は連携済み" in page.locator(
+        "[data-line-link-summary]"
+    ).inner_text()
+    calls = page.evaluate("window.__authCalls")
+    assert {"method": "rpc", "name": "sync_my_line_auth_identity"} in calls
+    assert {"method": "rpc", "name": "get_my_line_link_status"} in calls
+    assert "line_user_id" not in json.dumps(calls)
     assert messages == []
 
 
@@ -1610,7 +1793,7 @@ def test_account_deletion_requires_two_stage_confirmation_and_calls_edge_functio
     confirm.click()
 
     page.wait_for_url("http://pages.test/project/auth/login.html")
-    page.locator("[data-auth-form]:not([hidden])").wait_for()
+    open_email_fallback(page)
 
     function_call = page.evaluate(
         'JSON.parse(window.sessionStorage.getItem("mock-function-invoke"))'

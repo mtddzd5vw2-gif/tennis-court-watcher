@@ -89,11 +89,11 @@ Phase 1の画面名とURLは、GitHub Pagesのリポジトリ配下で動く相�
 | 画面 | URL案 | 公開範囲 | Phase | 主な内容 |
 | --- | --- | --- | --- | --- |
 | 空き状況トップ | `/` | 公開 | 0 | 施設別の空き候補、取得状態、最終確認、公式予約リンク |
-| 利用規約 | `legal/terms.html` | 公開 | 1 | 正式版 `2026-08-21`。サービス条件、免責、改定、準拠法、運営者、問い合わせ |
-| プライバシーに関する表示 | `legal/privacy.html` | 公開 | 1 | 正式版 `2026-08-21`。取得情報、利用目的、委託先、第三者提供、保持・削除、開示等請求 |
-| 会員登録・ログイン | `auth/login.html` | 公開 | 1 | メールアドレス、規約同意、マジックリンク送信 |
-| メール認証結果 | `auth/callback.html` | 公開 | 1 | 認証成功、期限切れ、無効リンク、再送導線 |
-| マイページ | `account/index.html` | 会員限定 | 1 / 4 | 規約同意状態、空き通知導線、LINE連携状態・操作、ログアウト、退会導線 |
+| 利用規約 | `legal/terms.html` | 公開 | 1 | 正式版 `2026-08-28`。サービス条件、免責、改定、準拠法、運営者、問い合わせ |
+| プライバシーに関する表示 | `legal/privacy.html` | 公開 | 1 | 正式版 `2026-08-28`。取得情報、利用目的、委託先、第三者提供、保持・削除、開示等請求 |
+| 会員登録・ログイン | `auth/login.html` | 公開 | 1 / 4 | 「LINEではじめる」を主導線とし、メールは任意の予備ログインとして折りたたんで表示 |
+| 認証結果 | `auth/callback.html` | 公開 | 1 / 4 | LINE・メール共通の認証成功、期限切れ、無効、再試行導線 |
+| マイページ | `account/index.html` | 会員限定 | 1 / 4 | 規約同意状態、任意の予備メール、空き通知導線、LINE通知状態・操作、ログアウト、退会導線 |
 | 空き通知 | `account/notifications.html` | active会員限定 | 2 | 設定一覧、作成・編集・一時停止・有効化・削除、施設、日付範囲、土曜・日曜・祝日、時間帯、利用時間 |
 | 通知履歴 | `/mypage/notifications` | 会員限定 | 3候補 | 送信履歴。MVPに含めるか**要決定** |
 | LINE連携 | `/mypage/line` | 会員限定 | 4 | 連携状態、連携開始、解除 |
@@ -106,30 +106,28 @@ Phase 1の画面名とURLは、GitHub Pagesのリポジトリ配下で動く相�
 
 ### 6.1 前提
 
-- Phase 1では利用規約同意とメール認証を必須とする。
+- 会員機能では現行利用規約への同意を必須とする。メールアドレスは必須にしない。
 - 登録にGPS位置情報を要求しない。
-- メールアドレス等の個人情報は認証・会員データベースに保存し、GitHubリポジトリへ保存しない。
-- 認証基盤はSupabase Auth/PostgreSQLを正式採用し、メールのマジックリンクを使用する。
+- LINE識別子と任意のメールアドレスは認証・会員データベースに保存し、GitHubリポジトリへ保存しない。
+- 認証基盤はSupabase Auth/PostgreSQLを正式採用し、LINE Loginを主導線、メールのマジックリンクを任意の予備手段とする。
 
 ### 6.2 基本フロー
 
-1. 利用者が会員登録画面を開く。
-2. 利用規約とプライバシーに関する表示を確認する。
-3. メールアドレスを入力し、現行利用規約への同意を明示する。
-4. クライアントで入力と同意を検証し、同じブラウザのsessionStorageへ個人情報を含まない同意保留markerを保存する。
-5. 認証基盤に未認証アカウントを作成し、マジックリンクを送信する。
-6. Authユーザー作成と同じトランザクションのtriggerで `pending_terms` profileを作成する。
-7. 認証メールを送信し、認証待ち画面を表示する。
-8. 利用者が同じブラウザで有効な認証リンクを開く。
-9. callbackがPKCE codeをセッションへ交換する。
-10. 同意保留markerがある場合だけ、引数なしの `accept_current_terms()` RPCがDB現行規約版とDB時刻で同意履歴を追加し、profileを `active` へ更新する。
-11. RPCが失敗してもセッションを破棄せず、マイページの再同意UIへ案内する。
+1. 利用者が会員登録・ログイン画面で「LINEではじめる」を選ぶ。
+2. Supabase AuthからLINE Login v2.1へPKCEで遷移し、同じproviderの公式アカウント友だち追加も案内する。
+3. callbackが一回限りのcodeをSupabaseセッションへ交換する。
+4. Authユーザー作成と同じトランザクションのtriggerで `pending_terms` profileとメール通知OFFの設定を作成する。
+5. マイページで利用規約とプライバシーに関する表示を確認し、現行利用規約への同意を明示する。
+6. 引数なしの `accept_current_terms()` RPCがDB現行規約版とDB時刻で同意履歴を追加し、profileを `active` へ更新する。
+7. active化後、`sync_my_line_auth_identity()` が信頼済みAuth identityからLINE通知先を本人会員へ結び付ける。LINE user IDはブラウザへ返さない。
+8. RPCが失敗してもセッションを破棄せず、マイページの再試行UIへ案内する。
 
 同意履歴追加とprofile更新は同じRPCトランザクションで行う。同一規約版への再実行は冪等である。既存Authユーザーはprofileだけを `pending_terms` で補完し、過去の同意を推測しない。
 
 ### 6.3 入力と検証
 
-- メールアドレス: 形式検証、正規化、認証基盤の一意制約を使用する。
+- LINEアカウント: LINE LoginとSupabase Authが検証したidentityを使用し、ブラウザ入力値を受け取らない。
+- 予備メールアドレス: 任意。追加時は形式検証、確認メール、認証基盤の一意制約を使用する。
 - 利用規約同意: 初期値は未選択とし、必須とする。
 - 表示名: 初期MVPで収集する必要性は**要決定**。不要なら収集しない。
 
@@ -154,11 +152,12 @@ Phase 1の同意証跡へIPアドレス、User-Agent、氏名、電話番号、�
 - 再同意が完了するまで通知条件の利用と通知配信を停止し、マイページで現行規約への同意を求める。
 - 変更内容と発効日は本サービス上で案内し、必要に応じて登録メールアドレスへ通知する。規約本文の履歴はGitで、同意履歴はDBの版別追記として保持する。
 
-## 8. メール認証
+## 8. 任意の予備メール認証
 
 ### 8.1 要件
 
-- 新規登録時は認証メールを送信し、認証完了まで会員限定機能を許可しない。
+- LINEだけで新規登録でき、メールアドレスの入力や認証を必須にしない。
+- 利用者はマイページから予備メールを追加でき、確認後はメールマジックリンクでもログインできる。
 - 認証リンクは推測困難で、有効期限を持ち、一度の目的に限定する。
 - コールバック先は許可済みURLに限定し、任意の外部URLへリダイレクトしない。
 - 期限切れ、改変済み、使用済みのリンクは失敗として扱い、再送導線を表示する。
@@ -182,15 +181,16 @@ Phase 1の同意証跡へIPアドレス、User-Agent、氏名、電話番号、�
 ### 8.3 引き続き決定が必要な事項
 
 - 認証リンクの有効期限
-- 未認証アカウントの保持期間と自動削除
+- 未確認の予備メール変更要求の保持期間と自動削除
 - 同一メールアドレスの再登録時の挙動
 
 ## 9. ログイン・ログアウト
 
 ### 9.1 ログイン
 
-- メールアドレスへ送るマジックリンクによるログインをPhase 1の方式とする。
-- メール認証済みで、退会・停止されていない会員だけを有効な会員として扱う。
+- 「LINEではじめる」を会員登録・ログインの主導線とする。
+- 確認済みの予備メールを持つ利用者には、メールマジックリンクも提供する。
+- 現行規約へ同意済みで、退会・停止されていない会員だけを有効な会員として扱う。
 - 認証失敗時は、メールアドレスの存在や未認証状態を過度に区別しない。
 - 連続失敗へのレート制限を適用する。
 - ログイン後の遷移先はマイページを基本とする。
@@ -206,19 +206,20 @@ Phase 1の同意証跡へIPアドレス、User-Agent、氏名、電話番号、�
 
 ### 9.3 パスワード
 
-Phase 1はマジックリンク認証を採用するため、パスワードの設定・保存・再設定機能を提供しない。
+LINEとメールマジックリンクを使用し、パスワードの設定・保存・再設定機能は提供しない。
 
 ## 10. マイページ
 
 ### 10.1 Phase 1で表示する情報
 
-- ログイン中のメールアドレス
+- LINEでログイン中であること、または登録済みの予備メールアドレス
+- 予備メール未登録時の任意追加フォーム
 - 現行規約への追加同意が必要な場合だけ同意導線
 - 空き通知画面への導線
 - ログアウト
 - 二段階確認による退会導線
 
-メールアドレス変更機能をPhase 1に含めるかは**要決定**。
+予備メールを登録してもメール通知は初期OFFのままとし、空き通知画面で本人が明示的に有効化する。
 
 ### 10.2 Phase 4で追加する情報
 
@@ -244,7 +245,7 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 
 通知条件設定はPhase 2で提供し、実装は完了している。通知条件の一覧・新規作成・編集・一時停止・有効化・削除UI、原子的保存RPC、1利用者5件の上限、純粋Pythonの照合エンジン、service-role専用の条件取得RPCは実装済みである。Phase 2は条件管理と空き候補に対する照合結果の生成までを責務とする。
 
-会員向けの画面名と公開空き画面のボタン名は「空き通知」とする。公開空き画面では「マイページ」の横へ「空き通知」を配置し、未認証時は会員登録の「初めての方」を初期表示する。ログイン済みなら空き通知画面へ進み、マジックリンク認証が必要な場合は同じブラウザのsession storageに固定トークン `notifications` だけを保持してcallback後に空き通知画面へ戻す。任意URLは受け取らず、オープンリダイレクトを作らない。
+会員向けの画面名と公開空き画面のボタン名は「空き通知」とする。公開空き画面では「マイページ」の横へ「空き通知」を配置し、未認証時はLINE主導の登録・ログイン画面を表示する。ログイン済みなら空き通知画面へ進み、認証が必要な場合は同じブラウザのsession storageに固定トークン `notifications` だけを保持してcallback後に空き通知画面へ戻す。任意URLは受け取らず、オープンリダイレクトを作らない。
 
 Phase 3ではqueue、email delivery worker、production deployment、canary、automatic enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupまで実装しproduction acceptanceを完了した。
 
@@ -335,7 +336,7 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - Phase 0の既存管理者LINE通知はlegacy notification pathとしてPhase 3.4.3で退役した。
 - Phase 4は管理者専用LINE経路を再構築せず、管理者を含む会員共通LINE notification基盤として導入する。
 - 導入日、重複配信防止、監視、ロールバックを定める。
-- Supabase Authのメール認証を会員認証の正として維持し、LINE Login v2.1はログイン済み会員との連携にだけ使用する。LINE Login channelとMessaging API channelは同一providerへ作成する。
+- Supabase AuthのLINE Login v2.1を会員認証の主導線とし、メールは任意の予備手段とする。LINE Login channelとMessaging API channelは同一providerへ作成する。
 - `line_account_links`は1会員1LINE account、1LINE account 1会員をDB制約で強制し、`line_link_sessions`はSHA-256のstate/nonce hashだけを10分間保持する。ブラウザはLINE user IDやlink sessionを参照・更新できず、本人かつactive会員にはRLS下で安全な状態列だけをcolumn-level Grantし、`SECURITY INVOKER` RPCも同じRLSへ従わせる。
 - LINE Login開始・callback・解除はEdge Functionへ集約する。開始・解除はSupabase JWTから本人を決定し、callbackは一回限りのstate、LINE authorization code、検証済みID token、nonce hashで認証する。callback URLへSupabase tokenを渡さず、LINE access/ID/refresh tokenを永続化しない。
 - callbackはLINE Login APIで友だち状態も確認し、未追加・block状態は`blocked`として保存する。user access tokenは処理後にbest-effortでrevokeし、通常ログへauthorization code、state、nonce、LINE user ID、tokenを出さない。
@@ -401,12 +402,12 @@ Phase 1会員・規約テーブルに加え、Phase 2の地域・施設マスタ
 
 | エンティティ | 主な項目 | 備考 |
 | --- | --- | --- |
-| `auth.users` | `id`, `email`, `email_confirmed_at`, 認証メタデータ | Supabase Auth採用時。認証基盤が管理 |
+| `auth.users` | `id`, 任意の`email`, `email_confirmed_at`, LINEを含む認証メタデータ | Supabase Authが管理。メールなしを許可 |
 | `profiles` | `id`, `account_role`, `membership_status`, `latest_terms_version`, `latest_terms_accepted_at`, `created_at`, `updated_at` | `auth.users(id)` をcascade参照。メールアドレスを重複保存しない |
 | `legal_document_versions` | `document_type`, `version`, `effective_at`, `is_current`, `created_at` | 同一文書種別のcurrentは部分一意indexで1件 |
 | `terms_acceptances` | `id`, `user_id`, `document_type`, `version`, `accepted_at`, `source` | 追記専用。同一利用者・文書種別・版は一意 |
 
-正式な現行規約版は `2026-08-21`、発効日は2026-08-21である。`2026-08-04-draft` の同意履歴は削除せず、正式版への再同意を別の履歴として記録する。
+正式な現行規約版は `2026-08-28`、発効日は2026-08-28である。過去版の同意履歴は削除せず、現行版への同意を別の履歴として記録する。
 
 `profiles.account_role`（`member` / `admin`）をアカウント権限のauthoritative sourceとする。`membership_status`、subscription、planとは独立した属性であり、メールアドレス、GitHub username、Auth user metadata、フロントエンドだけの判定からadminを推測しない。
 
@@ -459,10 +460,10 @@ Phase 3のメール通知データモデルは実装・production rollout済み�
 
 ### 16.1 認証
 
-- Phase 1はメールアドレスのマジックリンクとメール認証を使用し、パスワード認証は使用しない。
+- LINE Loginを主導線とし、確認済みメールアドレスのマジックリンクを任意の予備ログインとして提供する。パスワード認証は使用しない。
 - 認証処理とセッション管理は正式採用したSupabase Authへ委ねる。
 - GitHub Pagesからはブラウザ公開用キーだけを使い、認可の最終境界はRLSとする。
-- LINE連携はPhase 4であり、Phase 1のメール認証を省略しない。
+- LINE Auth identityから通知先を同期する処理は、本人かつactive会員だけが実行でき、LINE user IDをブラウザへ返さない。
 - 一般利用者はSupabase Authentication Usersとして管理し、Dashboard管理権限を持つSupabase Organization Teamへ追加しない。Team所属は認証メールの送信やログインの前提ではない。
 
 ### 16.2 認可

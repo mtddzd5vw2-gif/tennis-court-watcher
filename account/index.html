@@ -42,6 +42,33 @@
         >
           <h2 id="account-email-title">ログイン中のアカウント</h2>
           <p class="account-email" data-account-email></p>
+          <p class="muted" data-backup-email-guidance></p>
+          <form class="backup-email-form" data-backup-email-form hidden novalidate>
+            <div class="field">
+              <label for="backup-email">予備のメールアドレス（任意）</label>
+              <input
+                id="backup-email"
+                name="backup-email"
+                type="email"
+                autocomplete="email"
+                inputmode="email"
+                placeholder="name@example.com"
+                required
+              >
+            </div>
+            <button class="button button--secondary" type="submit" disabled>
+              確認メールを送る
+            </button>
+            <p class="form-note">
+              登録すると、LINEを利用できないときにメールでもログインできます。
+              メール通知は自動では有効になりません。
+            </p>
+            <p
+              class="status-text"
+              data-backup-email-status
+              aria-live="polite"
+            ></p>
+          </form>
         </section>
 
         <section
