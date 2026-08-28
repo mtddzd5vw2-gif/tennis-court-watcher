@@ -2,7 +2,7 @@
 
 ## 1. 現在地
 
-2026-08-27時点で、次の実装と本番単一会員canaryまで完了している。
+2026-08-28時点で、次の実装と本番単一会員canaryまで完了している。
 
 - raw bodyの署名をJSON parse前に検証するMessaging API webhook
 - webhook event IDによる重複排除と、順序逆転に耐えるfollow/unfollow反映
@@ -10,7 +10,8 @@
 - `user_id`、`channel`、`slot_id`単位の共通重複防止と、email/LINE workerのchannel分離
 - LINE Pushの固定retry key、recipient/payload再確認、bounded retry
 - 送信直前の月間使用量確認と180通guard
-- shadow no-write、enqueue/claim/送信直前の単一会員canary、全会員許可のfail-closed gate
+- shadow no-write、enqueue/claim/送信直前の単一会員canary、最大20会員の限定β、
+  全会員許可のfail-closed gate
 - 空き枠を捏造しない、固定文面の共通queue canary test job
 - 架空利用者を使ったcross-user isolation、RLS/Grant、rollback、retentionのpgTAP
 - 全migrationの再適用、Supabase database lint、security/performance advisor
@@ -28,8 +29,9 @@
 
 LINE delivery gateはcanary後にOFFへ戻した。既存GASの実メッセージ応答確認は、用途上の
 重要度が低いという所有者判断により2026-08-27に省略した。限定βまたは全会員向けdeliveryは
-未開始であり、提供中と表示しない。次はPR #68をmainへ統合できる状態に保ったままshadow
-no-writeを通常運用し、複数UUIDのserver-side allowlistを別の前方変更として実装する。
+未開始であり、提供中と表示しない。PR #68はmainへ統合済みで、約20時間のshadow観測では
+queue書込、Push、email副作用、異常終了は0だった。複数UUIDのserver-side allowlistは
+前方migrationとして実装中であり、本番反映前は従来gateだけが有効である。
 
 ## 2. 変更しない境界
 
@@ -45,20 +47,19 @@ LINE Pushが実行されるには、すべての条件が同時に必要であ�
 
 1. GitHub Variable `ENABLE_USER_LINE_ENQUEUE=true`
 2. GitHub Variable `LINE_NOTIFICATION_SHADOW_MODE=false`
-3. GitHub Secret `LINE_NOTIFICATION_CANARY_USER_ID`が対象会員のSupabase Auth UUIDと一致する、
-   またはGitHub Variable `LINE_NOTIFICATION_ALLOW_ALL=true`
+3. GitHub側で単一canary、限定β allowlist、全会員許可のいずれか1モードだけが有効である
 4. GitHub Variable `ENABLE_USER_LINE_DISPATCH=true`
-5. Supabase Edge Function secret `LINE_NOTIFICATION_CANARY_USER_ID`が同じ対象UUIDと一致し、`LINE_NOTIFICATION_ALLOW_ALL=false`
+5. Supabase Edge Function側でも同じ1モードだけが有効である
 6. Supabase Edge Function secret `ENABLE_USER_LINE_NOTIFICATIONS=true`
 7. 連携、会員状態、通知条件、lease、recipient、payload fingerprintの送信直前再確認に成功する
 8. LINE公式APIの月間使用量が`LINE_MONTHLY_PUSH_LIMIT`未満である
 
-shadow modeは候補を評価して集計だけを返し、queueへ書き込まない。live enqueueは
-canaryも明示的な全会員許可もない場合に失敗する。`allow all`とcanaryの同時指定も
-設定ミスとして拒否する。
+shadow modeは候補を評価して集計だけを返し、queueへ書き込まない。live enqueueとworkerは
+canary、allowlist、allow-allのどれもない場合、または複数モードが同時に指定された場合に
+失敗する。allowlistは一般APIへ公開しない`private` schemaへUUIDだけを保存し、operator RPC、
+enqueue、claim、送信直前の各境界で最大20会員を強制する。空または20会員超のallowlistでは
+Pushへ進まない。
 
-現実装のrollout allowlistは単一会員だけである。複数会員の限定βを行う前に、
-複数UUIDのserver-side allowlistを別の前方変更として実装・検証する。
 単一canaryから直接`LINE_NOTIFICATION_ALLOW_ALL=true`へ進めない。
 
 ## 4. SecretとVariable
@@ -75,7 +76,8 @@ canaryも明示的な全会員許可もない場合に失敗する。`allow all`
 | `LINE_DELIVERY_PAYLOAD_HMAC_KEY` | recipientとpayloadの整合性fingerprint。worker secretと別の値 |
 | `LINE_MONTHLY_PUSH_LIMIT` | ハード上限`180`。1以上180以下 |
 | `LINE_NOTIFICATION_CANARY_USER_ID` | worker claimと送信直前再検証が強制する単一canary UUID |
-| `LINE_NOTIFICATION_ALLOW_ALL` | 単一canary中は`false`。canary UUIDとの同時有効は拒否 |
+| `LINE_NOTIFICATION_USE_ALLOWLIST` | 限定βだけ`true`。canary、allow-allとの同時有効は拒否 |
+| `LINE_NOTIFICATION_ALLOW_ALL` | 全会員向けの別承認点まで`false` |
 | `ENABLE_USER_LINE_NOTIFICATIONS` | Edge Function内の最終gate。初期値`false` |
 
 `SUPABASE_URL`と`SUPABASE_SERVICE_ROLE_KEY`はSupabase hosted Edge Functionへ自動提供される。
@@ -93,6 +95,7 @@ canaryも明示的な全会員許可もない場合に失敗する。`allow all`
 ENABLE_USER_LINE_ENQUEUE=false
 ENABLE_USER_LINE_DISPATCH=false
 LINE_NOTIFICATION_SHADOW_MODE=true
+LINE_NOTIFICATION_USE_ALLOWLIST=false
 LINE_NOTIFICATION_ALLOW_ALL=false
 ```
 
@@ -109,12 +112,13 @@ $ErrorActionPreference = "Stop"
 gh variable set ENABLE_USER_LINE_ENQUEUE --body "false"
 gh variable set ENABLE_USER_LINE_DISPATCH --body "false"
 gh variable set LINE_NOTIFICATION_SHADOW_MODE --body "true"
+gh variable set LINE_NOTIFICATION_USE_ALLOWLIST --body "false"
 gh variable set LINE_NOTIFICATION_ALLOW_ALL --body "false"
 gh variable set ENABLE_SCHEDULED_RUNS --body "false"
 ```
 
 既存emailのVariableは変更しない。対象PRをmergeして`main`を取得した後、migrationを
-dry-runし、対象が`20260821095256_add_line_notification_delivery.sql`だけであることを確認する。
+dry-runし、対象が`20260828001723_add_line_notification_rollout_allowlist.sql`だけであることを確認する。
 
 ```powershell
 npx --yes supabase@2.115.0 db push --linked --skip-vault --dry-run
@@ -131,6 +135,7 @@ Git管理外の`.env.line-delivery.local`を作り、4つの秘密値と単一ca
 ```text
 LINE_NOTIFICATION_CANARY_USER_ID=<Supabase Auth UUID>
 LINE_MONTHLY_PUSH_LIMIT=180
+LINE_NOTIFICATION_USE_ALLOWLIST=false
 LINE_NOTIFICATION_ALLOW_ALL=false
 ENABLE_USER_LINE_NOTIFICATIONS=false
 LINE_WEBHOOK_BRIDGE_ENABLED=false
@@ -179,6 +184,7 @@ bridge secretを`false`に戻して前方修正する。
 gh variable set ENABLE_USER_LINE_ENQUEUE --body "true"
 gh variable set LINE_NOTIFICATION_SHADOW_MODE --body "true"
 gh variable set ENABLE_USER_LINE_DISPATCH --body "false"
+gh variable set LINE_NOTIFICATION_USE_ALLOWLIST --body "false"
 gh variable set LINE_NOTIFICATION_ALLOW_ALL --body "false"
 
 gh workflow run update-availability.yml `
@@ -201,7 +207,7 @@ itemは0件、email message/delivery itemは各1件のままで変化しなか�
 
 GitHubとSupabase Edge Functionの両方の`LINE_NOTIFICATION_CANARY_USER_ID`を
 canary本人のSupabase Auth UUIDへ設定する。Supabase側の
-`LINE_NOTIFICATION_ALLOW_ALL=false`も確認する。
+`LINE_NOTIFICATION_USE_ALLOWLIST=false`と`LINE_NOTIFICATION_ALLOW_ALL=false`も確認する。
 canaryはactive会員、LINE連携`active`、有効な通知条件を持つ必要がある。
 
 ```powershell
@@ -233,8 +239,32 @@ Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=true`を設定し、その後でGitHu
 
 ### Stage 4: 限定β
 
-複数UUIDのserver-side allowlist実装とcross-user testを別PRで完了するまで開始しない。
-allowlist導入後もshadow、限定β、24時間観察を行い、全会員許可は別の承認点とする。
+allowlist migration、Edge Function、workflowをmainへ統合して本番反映した後にだけ開始する。
+切替中はenqueue、dispatch、Edge Function最終gateをすべて停止し、5分のlease失効後に
+`active_processing_count=0`を確認する。次にSupabase SQL Editorまたは同等の信頼済みDB管理経路から、
+private管理関数へ1〜20件のSupabase Auth UUIDを配列で渡す。この関数はData APIの
+`service_role`を含むアプリケーションroleから実行できない。リストを原子的に置換し、
+外れた会員の未送信backlogを取消す。
+
+```sql
+select *
+from private.replace_line_notification_beta_allowlist(
+  array[
+    '<beta-member-auth-uuid-1>'::uuid,
+    '<beta-member-auth-uuid-2>'::uuid
+  ]
+);
+```
+
+`allowlisted_count`が依頼件数と一致し、`cancelled_message_count`が想定内であることを確認する。
+UUIDを通常ログ、Issue、PR本文へ記録しない。GitHubとSupabaseのcanary UUIDを解除し、両側で
+`LINE_NOTIFICATION_USE_ALLOWLIST=true`、`LINE_NOTIFICATION_ALLOW_ALL=false`にそろえる。
+
+最初は`LINE_NOTIFICATION_SHADOW_MODE=true`、dispatch OFFで手動runし、eligible件数が
+allowlist会員だけでqueue変化0であることを確認する。次にshadowをOFF、dispatchはOFFのまま
+1回enqueueし、allowlist外のdelivery item/messageが0であることを集計確認する。最後に
+Supabase最終gate、GitHub dispatchの順で有効化する。少数会員で1回だけPushを確認した後は
+異常、重複、quota、queue滞留、email副作用をaggregateで観察する。全会員許可は別の承認点とする。
 
 ## 7. Rollback
 
@@ -254,6 +284,9 @@ select * from public.cancel_line_notification_backlog();
 このRPCは未送信の`pending`/`retry`とlease失効済み`processing`だけを取消し、
 送信受理済み履歴とemail channelを変更しない。`active_processing_count`が0でない場合は
 再実行せず、残るleaseが失効してからもう一度確認する。
+限定βを終了する場合は、その後に信頼済みDB管理経路から
+`private.replace_line_notification_beta_allowlist(array[]::uuid[])`で
+allowlistを空にし、GitHubとSupabaseの`LINE_NOTIFICATION_USE_ALLOWLIST=false`へ戻す。
 
 webhookはblock/unfollow状態を安全に保つため、Push停止時も原則として維持する。
 bridge切替中のwebhook自体に問題がある場合は停止ではなく、まずWebhook URLを直前の
@@ -283,6 +316,9 @@ DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き�
 - follow/unfollowの順序逆転で古いeventが現在状態を上書きしない
 - shadowでLINE queueへ書き込まない
 - 単一canary以外へenqueue・Pushしない
+- 限定βでは1〜20会員のprivate allowlist以外へenqueue・claim・Pushしない
+- allowlistから外した会員の未送信backlogと送信直前leaseが取消される
+- 旧RPC signatureをservice-roleから実行できない
 - email workerがLINE messageを、LINE workerがemail messageをclaimしない
 - 同一messageのtimeout/5xx再試行で重複Pushしない
 - block、解除、退会、通知停止後は送信しない
@@ -290,4 +326,5 @@ DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き�
 - rollback後に未送信LINE backlogとactive leaseが残らない
 - secret、LINE user ID、payload本文がrepository、Actions log、Artifact、公開Pagesにない
 
-全項目の証跡を残した後に限り、単一会員canaryを完了扱いとする。
+単一会員canaryの項目は完了済みである。限定βは追加3項目を含む証跡を残した後にだけ
+完了扱いとする。

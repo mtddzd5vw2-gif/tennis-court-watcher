@@ -32,8 +32,14 @@ enqueueだけでなくworker claimと送信直前authorizationでもserver-side�
 本番migrationとFunction deploy、単一会員queue canaryを完了した。固定test jobは
 LINE APIで1回だけ`accepted`となり、月間使用量は19から20へ増え、duplicate、retry、
 email副作用がないことを確認した。LINE delivery gateはテスト後にOFFへ戻している。
-Messaging API channelには別用途のGoogle Apps Script webhookが存在するため、直接置換せず
-署名検証済みpass-through bridgeを先に導入する。
+Messaging API channelに存在した別用途Google Apps Script webhookは、署名検証済み
+pass-through bridgeを介する構成へ切替済みである。2026-08-28までの約20時間のshadowでは
+LINE queue書込、Push、email副作用、異常終了は0だった。
+
+限定β向けには、一般APIへ公開しない`private.line_notification_beta_allowlist`へUUIDだけを
+最大20件保持する前方migrationを追加する。リスト置換はData APIへ公開しないprivate管理関数へ集約し、
+enqueue、worker claim、送信直前authorizationの3境界が同じリストを再確認する。単一canary、
+限定β、全会員は相互排他的なモードとし、空リスト、20件超、複数モード同時指定をfail closedする。
 導入順と停止手順は[LINE Notification Rollout](./PHASE4_LINE_NOTIFICATION_ROLLOUT.md)を正とする。
 
 ## 2. 採用方式
@@ -138,7 +144,10 @@ LINE user IDは個人情報に準じ、GitHub、Actions log、Artifact、公開P
 - `TO authenticated`だけで許可せず、必ず本人所有条件を加える。
 - LINE user IDを返す一般会員向けviewやRPCを作らない。
 - service-role専用RPCは`PUBLIC`、`anon`、`authenticated`からexecuteを剥奪する。
-- `SECURITY DEFINER`を権限エラー回避のために使用しない。
+- `SECURITY DEFINER`を一般的な権限エラー回避に使用しない。private allowlistの書込だけは、
+  20件上限、active会員検証、同時lease拒否、空のsearch pathを持ち、信頼済みDB管理者だけが
+  実行できるprivate関数へ閉じる。`service_role`を含むアプリケーションroleには実行を許可しない。
+- private allowlist tableはRLSを強制し、service-roleへSELECTだけを許可して直接書込を許可しない。
 - migration適用後にSupabase security/performance advisorを実行する。
 
 ## 6. Webhook
@@ -182,13 +191,13 @@ LINE display name、profile image、status message、email addressは取得し�
 2. schema、RLS、Grant、link session、account linkのmigrationを作る。— 完了
 3. LINE Login開始・callback・解除Edge Functionを実装する。— 本番反映・HTTP境界確認完了
 4. My Pageへ連携状態と操作UIを追加する。— 実装・本番スマホacceptance完了
-5. webhook署名検証、冪等化、block/unfollow反映を実装する。— 実装・本番Function deploy完了、GAS bridge切替待ち
+5. webhook署名検証、冪等化、block/unfollow反映を実装する。— 本番Function deploy・GAS bridge切替完了
 6. 月間使用量の週次報告と180通警告を有効化する。— 完了
 7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。— 実装・単一会員本番canary完了
 8. dry-runと架空利用者によるcross-user isolationを検証する。— shadow no-write、cross-user、channel分離を隔離環境で確認済み
-9. 管理者を含むβ会員を同じ基盤で連携する。— 単一会員本番canary完了
-10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。— 単一会員まで完了、限定β allowlistは次段階
-11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。— 単一会員deliveryと即時停止を確認、webhook/block系はbridge切替後に確認
+9. 管理者を含むβ会員を同じ基盤で連携する。— 単一会員本番canary完了、最大20会員allowlist実装中
+10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。— 単一会員と約20時間shadowまで完了、限定βは本番反映待ち
+11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。— 単一会員deliveryと即時停止を確認、限定βacceptanceは未実施
 
 ## 9. 完了条件
 
@@ -196,6 +205,7 @@ LINE display name、profile image、status message、email addressは取得し�
 - 連携state、nonce、authorization codeを再利用できない。
 - 連携解除、block、通知停止、退会後は配信されない。
 - 同じLINE通知を同じ利用者へ重複送信しない。
+- 限定βでは最大20会員のprivate allowlistを3つの配信境界で強制し、外れた会員へ送信しない。
 - LINE user ID、token、secretが公開データまたはlogへ出ない。
 - メール通知はPhase 4導入中も継続し、LINE障害の影響を受けない。
 - LINE月間使用量が180通へ到達した後はLINE Pushを増やさず、週次報告と

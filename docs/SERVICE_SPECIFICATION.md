@@ -345,7 +345,8 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - 既存のnotification rule matchingを共用し、emailとLINEの候補判定を一致させる。
 - 重複防止の正は`unique (user_id, channel, slot_id)`とし、emailとLINEを別channelとして保持する。
 - email workerとLINE workerは明示的なchannel条件と別credentialを持ち、互いのmessageをclaimしない。
-- LINE enqueueは初期OFFかつshadowを既定とする。live enqueueは単一会員canary、または明示的な全会員許可がなければfail closedする。
+- LINE enqueueは初期OFFかつshadowを既定とする。live enqueueは単一会員canary、最大20会員のprivate server-side allowlist、明示的な全会員許可のいずれか1モードだけを許可する。空allowlist、上限超過、複数モード同時指定はfail closedする。
+- 限定βallowlistはSupabase Auth UUIDだけを保持し、一般Data APIへ公開しない。enqueue、LINE worker claim、送信直前authorizationで同じallowlistを再確認する。置換は信頼済みDB管理者だけが実行できるprivate関数に限定し、service-roleを含むアプリケーションroleからは直接書込も関数実行もできない。
 - Messaging API webhookはraw bodyのHMAC-SHA256署名をJSON parse前に検証し、event IDで重複を排除する。保存対象はevent ID、event種別、発生時刻だけとし、LINE user IDやraw payloadをledgerへ保存しない。
 - Push送信では内部message UUIDを最初の試行からretry keyとして固定し、同じrecipientとpayloadの再送だけを許可する。providerの5xx・timeoutだけをbounded retryし、client error・無効token・上限到達は再送しない。
 - LINE tokenはEdge Function secretに留め、GitHub availability workflowへ渡さない。workflowのdispatch stepは高entropyな専用worker secretだけを持つ。
@@ -433,10 +434,11 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 | `notification_message_items` | messageとdelivery itemの関連 | delivery itemを1つのmessageへ関連付ける |
 | `notification_provider_events` | Resend delivery feedbackの重複排除・状態反映 | raw webhook payloadや宛先は保存しない |
 | `notification_email_unsubscribe_tokens` | メール配信停止用capability | browser roleから直接参照しない |
+| `private.line_notification_beta_allowlist` | 限定βへ許可した会員UUID | 最大20件。RLS強制、browser非公開、service-roleは直接書込不可 |
 
 Phase 3のメール通知データモデルは実装・production rollout済みである。
 メールアドレスはSupabase Authを正とし、通知用public schemaへ複製しない。
-利用者別LINE通知用のデータモデルはPhase 4で前方追加する。
+利用者別LINE通知用のデータモデルはPhase 4で前方追加済みで、限定βallowlistは本番反映前である。
 
 詳細は [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)、
 [Phase 3 利用者別メール通知設計](./PHASE3_USER_EMAIL_NOTIFICATION_DESIGN.md)を参照する。

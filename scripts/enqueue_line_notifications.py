@@ -69,6 +69,7 @@ def enqueue_candidate_batch(
     *,
     shadow_mode: bool,
     canary_user_id: str | None,
+    use_allowlist: bool,
     allow_all: bool,
     timeout: int = RPC_TIMEOUT_SECONDS,
     opener: Callable[..., Any] | None = None,
@@ -91,13 +92,16 @@ def enqueue_candidate_batch(
         or timeout <= 0
     ):
         raise LineNotificationEnqueueError("RPC timeout must be positive")
-    _validate_rollout_controls(shadow_mode, canary_user_id, allow_all)
+    _validate_rollout_controls(
+        shadow_mode, canary_user_id, use_allowlist, allow_all
+    )
 
     body = json.dumps(
         {
             "p_candidates": list(candidates),
             "p_shadow_mode": shadow_mode,
             "p_canary_user_id": canary_user_id,
+            "p_use_allowlist": use_allowlist,
             "p_allow_all": allow_all,
         },
         ensure_ascii=False,
@@ -157,11 +161,14 @@ def enqueue_candidates(
     *,
     shadow_mode: bool,
     canary_user_id: str | None,
+    use_allowlist: bool,
     allow_all: bool,
     timeout: int = RPC_TIMEOUT_SECONDS,
     opener: Callable[..., Any] | None = None,
 ) -> dict[str, int | bool]:
-    _validate_rollout_controls(shadow_mode, canary_user_id, allow_all)
+    _validate_rollout_controls(
+        shadow_mode, canary_user_id, use_allowlist, allow_all
+    )
     totals: dict[str, int | bool] = {
         field: 0 for field in RPC_COUNT_FIELDS
     }
@@ -173,6 +180,7 @@ def enqueue_candidates(
             candidates[offset : offset + MAX_CANDIDATES_PER_REQUEST],
             shadow_mode=shadow_mode,
             canary_user_id=canary_user_id,
+            use_allowlist=use_allowlist,
             allow_all=allow_all,
             timeout=timeout,
             opener=opener,
@@ -194,9 +202,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         shadow_mode = _required_boolean_env("LINE_NOTIFICATION_SHADOW_MODE")
+        use_allowlist = _required_boolean_env(
+            "LINE_NOTIFICATION_USE_ALLOWLIST"
+        )
         allow_all = _required_boolean_env("LINE_NOTIFICATION_ALLOW_ALL")
         canary_user_id = _optional_uuid_env("LINE_NOTIFICATION_CANARY_USER_ID")
-        _validate_rollout_controls(shadow_mode, canary_user_id, allow_all)
+        _validate_rollout_controls(
+            shadow_mode, canary_user_id, use_allowlist, allow_all
+        )
         supabase_url = os.environ.get("SUPABASE_URL", "")
         service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
         rules = matching.fetch_notification_rules(supabase_url, service_role_key)
@@ -210,6 +223,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidates,
             shadow_mode=shadow_mode,
             canary_user_id=canary_user_id,
+            use_allowlist=use_allowlist,
             allow_all=allow_all,
         )
     except (
@@ -307,9 +321,14 @@ def _optional_uuid_env(name: str) -> str | None:
 def _validate_rollout_controls(
     shadow_mode: bool,
     canary_user_id: str | None,
+    use_allowlist: bool,
     allow_all: bool,
 ) -> None:
-    if not isinstance(shadow_mode, bool) or not isinstance(allow_all, bool):
+    if (
+        not isinstance(shadow_mode, bool)
+        or not isinstance(use_allowlist, bool)
+        or not isinstance(allow_all, bool)
+    ):
         raise LineNotificationEnqueueError("LINE rollout controls are invalid")
     if canary_user_id is not None:
         try:
@@ -318,11 +337,14 @@ def _validate_rollout_controls(
             raise LineNotificationEnqueueError(
                 "LINE_NOTIFICATION_CANARY_USER_ID must be a UUID"
             ) from None
-    if allow_all and canary_user_id is not None:
+    rollout_mode_count = sum(
+        (canary_user_id is not None, use_allowlist, allow_all)
+    )
+    if rollout_mode_count > 1:
         raise LineNotificationEnqueueError("LINE rollout controls are ambiguous")
-    if not shadow_mode and not allow_all and canary_user_id is None:
+    if not shadow_mode and rollout_mode_count != 1:
         raise LineNotificationEnqueueError(
-            "live LINE enqueue requires a canary user or explicit allow-all"
+            "live LINE enqueue requires canary, allowlist, or explicit allow-all"
         )
 
 

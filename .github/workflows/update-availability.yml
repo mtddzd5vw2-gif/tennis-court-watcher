@@ -135,6 +135,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           LINE_NOTIFICATION_SHADOW_MODE: ${{ env.LINE_SHADOW_ONLY == 'true' && 'true' || vars.LINE_NOTIFICATION_SHADOW_MODE || 'true' }}
           LINE_NOTIFICATION_CANARY_USER_ID: ${{ secrets.LINE_NOTIFICATION_CANARY_USER_ID }}
+          LINE_NOTIFICATION_USE_ALLOWLIST: ${{ vars.LINE_NOTIFICATION_USE_ALLOWLIST || 'false' }}
           LINE_NOTIFICATION_ALLOW_ALL: ${{ vars.LINE_NOTIFICATION_ALLOW_ALL || 'false' }}
         run: >-
           python scripts/enqueue_line_notifications.py
