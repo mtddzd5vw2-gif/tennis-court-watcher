@@ -44,6 +44,15 @@ retry・失敗・email副作用0を確認した。PR #70のdispatch-only modeに
 しないよう修正した。Edge Function version 37を本番deploy後、13:12 JSTの実Cronが
 `dispatch_accepted`でfallback run `33141122234`を生成し、run本体とPages deployの成功、
 LINE/email候補・送信0、retry・失敗・allowlist外queue 0、使用量21/180を確認した。
+さらにnative scheduleの欠落が続いた14:02 JSTにもwatchdogがfallback run `33143541549`を
+1回だけ生成した。run本体とPages deployは成功し、1 rule・10 slotsに対して候補・enqueue・
+dispatchはLINE/emailとも0、LINE active queueとallowlist外queueは0、使用量は21/180だった。
+14:12 JSTの次tickはこのrunを`fresh`、`active_run_count=0`として認識し、追加dispatchを行わなかった。
+
+同時点の全会員開放前snapshotは、active会員1、active LINE連携1、有効rule所有者1、
+allowlist会員1である。したがって現在の即時配信対象は限定βと同じ1会員だが、全会員許可後は
+将来activeになりLINE連携と有効ruleをそろえた会員も自動的に対象になる。これは別の明示承認を
+必要とする運用境界であり、`LINE_NOTIFICATION_ALLOW_ALL=false`を維持している。
 
 ## 2. 変更しない境界
 
@@ -293,6 +302,44 @@ allowlist会員だけでqueue変化0であることを確認する。次にshado
 Supabase最終gate、GitHub dispatchの順で有効化する。少数会員で1回だけPushを確認した後は
 異常、重複、quota、queue滞留、email副作用をaggregateで観察する。全会員許可は別の承認点とする。
 
+### Stage 5: 全会員許可
+
+このStageは、現在の対象人数だけでなく、今後条件を満たす新規会員も自動的に配信対象へ入ることを
+所有者へ説明し、`LINE_NOTIFICATION_ALLOW_ALL=true`への別の明示承認を得た後にだけ実行する。
+「次へ進む」「確認を続ける」などの一般的な進行許可を、この承認として扱わない。
+
+承認直前に、個人識別子を出さないaggregateで次を記録する。
+
+- active会員数、active LINE連携数、有効rule数と所有者数
+- allowlist件数、LINE message/delivery itemのstatus別件数
+- `pending`、`retry_wait`、有効lease中`processing`の合計が0
+- LINE月間使用量が180未満で、retry・permanent failure・quota異常が0
+- 直近live runとPages deployが成功し、watchdogが`fresh`または想定どおりfallbackを1回だけ受理する
+
+切替は、モードが一時的に二重有効にならないよう、すべてのLINE書込・送信gateを閉じて行う。
+既存emailは通常どおり維持し、`ENABLE_SCHEDULED_RUNS`の停止時間は切替確認中だけに限定する。
+
+1. `ENABLE_SCHEDULED_RUNS=false`、`ENABLE_USER_LINE_ENQUEUE=false`、
+   `ENABLE_USER_LINE_DISPATCH=false`にする。
+2. Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=false`にする。
+3. 実行中のavailability workflowがないことと、最長5分のlease失効後に
+   LINE active queue、`active_processing_count`がともに0であることを確認する。
+4. GitHubとSupabaseのcanary UUIDが未設定であることを確認する。
+5. Supabaseで`LINE_NOTIFICATION_USE_ALLOWLIST=false`、
+   `LINE_NOTIFICATION_ALLOW_ALL=true`へそろえる。最終gateはまだ`false`のままにする。
+6. GitHubで`LINE_NOTIFICATION_USE_ALLOWLIST=false`を先に設定し、その後
+   `LINE_NOTIFICATION_ALLOW_ALL=true`へ設定する。enqueue/dispatchはまだ`false`のままにする。
+7. `LINE_NOTIFICATION_SHADOW_MODE=true`、enqueueだけ`true`にし、`main`からshadow-onlyを1回実行する。
+   eligible件数がactive会員・active LINE連携・有効ruleの積集合と一致し、queue変化0を確認する。
+8. shadowを`false`へ戻し、dispatchは`false`のままlive enqueueを1回実行する。新規queueの全件が
+   送信時点でもactive会員・active LINE連携・有効ruleを満たし、件数が想定内であることを確認する。
+9. Supabase最終gate、GitHub dispatchの順で有効化し、dispatch-onlyを1回実行する。
+10. accepted、retry、failure、cancelled、quota、email副作用をaggregateで確認してから
+    `ENABLE_SCHEDULED_RUNS=true`へ戻す。
+
+切替後の最初の定期runでも同じaggregateを確認する。recipient不一致、allowlist modeの残留、
+モード二重有効、active queue滞留、quota異常が1件でもあれば完了扱いにせず、直ちにrollbackする。
+
 ## 7. Rollback
 
 誤配信疑い、quota異常、provider障害、queue滞留、recipient不一致が1件でもあれば、
@@ -314,6 +361,12 @@ select * from public.cancel_line_notification_backlog();
 限定βを終了する場合は、その後に信頼済みDB管理経路から
 `private.replace_line_notification_beta_allowlist(array[]::uuid[])`で
 allowlistを空にし、GitHubとSupabaseの`LINE_NOTIFICATION_USE_ALLOWLIST=false`へ戻す。
+
+Stage 5から限定βへ戻す場合はallowlistを空にしない。1〜20会員の既存allowlistと
+`active_processing_count=0`を確認し、すべてのLINE gateを閉じたままGitHubとSupabaseの
+`LINE_NOTIFICATION_ALLOW_ALL=false`、`LINE_NOTIFICATION_USE_ALLOWLIST=true`を同期する。
+二重有効でも無指定でも送信はfail closedするが、設定同期を完了するまでenqueue/dispatchと
+Supabase最終gateを再開しない。
 
 webhookはblock/unfollow状態を安全に保つため、Push停止時も原則として維持する。
 bridge切替中のwebhook自体に問題がある場合は停止ではなく、まずWebhook URLを直前の
