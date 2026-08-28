@@ -454,7 +454,12 @@ block/unfollow反映、利用者別`line` channel queue、worker、retry、180�
 queue書込、Push、email副作用、異常終了0で確認した。GAS互換webhook bridgeへの切替も完了した。
 最大20会員のprivate server-side allowlistは本番反映済みである。2026-08-28にallowlist内の
 固定テスト1通を実機受信し、使用量20→21、retry・失敗・email副作用0を確認して限定βを開始した。
-限定βの継続観測と全会員向けproduction acceptanceは未完了である。
+同日、native schedule欠落時にSupabase watchdogが13:12と14:02 JSTの2回、各1回だけfallback
+runを生成し、いずれもrun本体とPages deployが成功した。直近run後もLINE/email候補・送信、
+LINE active queue、retry・失敗は0、使用量は21/180である。全会員開放前のGo/No-Go snapshotと
+fail-closedな切替・限定βへのrollback手順はrunbookへ追記済みである。
+`LINE_NOTIFICATION_ALLOW_ALL`は別の明示承認まで`false`を維持し、全会員向けproduction acceptanceは
+未完了である。
 
 ### 目的
 
