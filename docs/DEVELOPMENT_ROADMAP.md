@@ -26,7 +26,7 @@ Phase設計書に残る「今回」「後続PR」「未実装」等の記述は�
 - 現在稼働しているスクレイピング、GitHub Pages、利用者別メール通知を維持しながら段階的に移行する。Phase 0のlegacy管理者LINE通知はPhase 3.4.3で退役済みであり、Phase 4の利用者別LINE通知とは分離して扱う。
 - アカウント権限の正は `public.profiles.account_role` とし、メールアドレス、GitHub username、Auth user metadata、フロントエンドだけの判定に依存しない。`account_role` は会員状態や契約・プランとは独立して管理する。
 - GitHubリポジトリ、Actions Artifact、Pages公開データにメールアドレスなどの個人情報を保存しない。
-- 会員基盤はSupabase Auth/PostgreSQLを正式採用する。認証方式はメールのマジックリンクとし、GitHub Pagesを継続する。認証メールはCloudflare Registrarで管理する `email.tenniscourtwatcher.com` とTokyoリージョンのResend Custom SMTPを使用する。Supabaseの料金枠など、明記した項目は引き続き**要決定**。
+- 会員基盤はSupabase Auth/PostgreSQLを正式採用する。2026-08-28からLINE Loginを会員登録・ログインの主導線とし、メールのマジックリンクは任意の予備手段とする。GitHub Pagesを継続し、認証メールはCloudflare Registrarで管理する `email.tenniscourtwatcher.com` とTokyoリージョンのResend Custom SMTPを使用する。Supabaseの料金枠など、明記した項目は引き続き**要決定**。
 - 未決事項は検証または意思決定を終えるまで「要決定」とし、実装上の前提として固定しない。
 
 ## Phase一覧
@@ -34,7 +34,7 @@ Phase設計書に残る「今回」「後続PR」「未実装」等の記述は�
 | Phase | 状態 | 到達点 |
 | --- | --- | --- |
 | Phase 0 | 完成済み | 鹿児島市3施設の空き状況を定期取得してPages表示する。Phase 0で導入したlegacy管理者LINE経路はPhase 3.4.3で退役済み |
-| Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページ、退会を提供する |
+| Phase 1 | 完成済み | 規約同意、会員登録、ログイン、マイページ、退会を提供する。現在の主導線はLINE、メールは任意 |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
 | Phase 3 | 完了 | 利用者別メール通知、配信feedback、unsubscribe / re-enable、90日retention cleanupまでproduction acceptance完了 |
 | Phase 4 | 全会員向け本番運転中 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
@@ -483,14 +483,14 @@ enqueue、dispatch-onlyを順に実行した。候補・queue・送信・retry�
 - 条件一致した利用者へ個別に通知し、別利用者の条件や識別子を露出しない。
 - 連携解除・退会・通知停止を以後の配信へ反映できる。
 - 管理者を含む全会員が同じLINE notification基盤を利用し、管理者専用LINE経路を再構築しない。
-- Supabase Authのメール認証を正として維持し、同一LINE providerのLINE Login v2.1で会員とLINE accountを連携し、Messaging APIで配信する。
+- Supabase AuthのLINE Login v2.1を会員登録・ログインの主導線とし、同一LINE providerのMessaging APIで会員ごとに配信する。メールは任意の予備ログイン・通知手段として維持する。
 - LINE Official Account Managerからの並行配信を含む月間使用量を公式APIで確認し、
   毎週土曜に報告できる。180通到達後はLINE Pushを増やさずemailへ
   フォールバックする。
 
 ### 対象外
 
-- LINEを唯一の会員認証手段にすること
+- パスワード認証を追加すること
 - LINE上での予約完結
 
 ---
