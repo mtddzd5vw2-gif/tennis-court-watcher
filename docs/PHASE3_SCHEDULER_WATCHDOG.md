@@ -152,6 +152,21 @@ from cron.job
 where jobname = 'update-availability-watchdog';
 ```
 
+## 2026-08-28 production recovery acceptance
+
+GitHub native scheduleが複数枠でrunを生成しなかった際、2026-08-26のworkflow_dispatch run
+`32984358881`がGitHub API上で古い`queued` statusのまま残留し、watchdogが全tickを
+`active_run_present`としてfallbackを抑止していた。active判定を作成から45分未満に限定した
+Edge Function version 37をdeployし、12:42 JSTの実Cronで`fresh`、`active_run_count=0`、
+dispatch 0を確認した。
+
+その後も13:07 JSTのnative runが生成されなかったため、13:12 JSTの実Cronが2回のstale
+snapshot、active 0を確認し、fallback POSTを1回だけ実行した。responseはHTTP 200、
+`dispatch_accepted`、workflow run ID `33141122234`であり、run本体とPages deployは成功した。
+watchdog counterはattempt 171、accepted 170へ各1増加し、30分cooldownが設定された。
+LINE/email候補・enqueue・dispatchは0、LINE retry・失敗・allowlist外queueは0、LINE使用量は
+21/180のままだった。
+
 ## 残る運用リスク
 
 - GitHub Actions の native schedule 自体が45分以上遅延すると fallback が起動する。これは watchdog の目的どおりだが、GitHub 側で run が同時生成された場合は second snapshot と既存 concurrency が最終的な競合抑止になる。
