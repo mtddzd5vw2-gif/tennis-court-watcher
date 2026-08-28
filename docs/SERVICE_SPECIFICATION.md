@@ -226,7 +226,7 @@ Phase 1はマジックリンク認証を採用するため、パスワードの�
 - 画面には `get_my_line_link_status()` が返す連携有無と安全な状態だけを表示し、LINE user ID、display name、profile image、OAuth tokenは表示・保存しない。
 - callbackの粗い結果は表示前にURLから消去し、開始Functionが返す遷移先はLINE公式のauthorization endpointだけを許可する。
 - 解除は確認画面を開いた後の明示操作を必要とし、リクエスト本文へ `user_id` を含めない。
-- 利用者別LINE配信workerが有効になるまでは「準備中」と明示し、連携だけで通知配信が始まると誤認させない。
+- 利用者別LINE配信は全active会員向けに有効である。画面には「配信中」と表示し、LINE連携と有効な通知条件の両方が必要だと案内する。
 
 ### 10.3 後続Phaseで追加する情報
 

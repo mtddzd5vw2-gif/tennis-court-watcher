@@ -146,7 +146,7 @@
         summary.textContent = "LINE通知は連携済みです";
         summary.dataset.state = "active";
         guidance.textContent =
-          "LINEアカウントとの連携は完了しています。利用者別LINE通知の配信開始は、準備が整い次第お知らせします。";
+          "有効な通知条件に一致する空きが見つかった場合、このLINEアカウントへ通知します。";
         start.hidden = true;
         start.disabled = true;
         unlinkStart.hidden = false;
@@ -182,7 +182,7 @@
       summary.textContent = "LINEは未連携です";
       summary.dataset.state = "inactive";
       guidance.textContent =
-        "LINE通知を使う準備として、LINEアカウントを連携できます。連携だけでは通知配信は始まりません。";
+        "LINEで空き通知を受け取るには、LINEアカウントを連携してください。連携後は、有効な通知条件に一致する空きが見つかった場合に通知します。";
       start.textContent = "LINEアカウントを連携する";
       start.hidden = false;
       start.disabled = false;

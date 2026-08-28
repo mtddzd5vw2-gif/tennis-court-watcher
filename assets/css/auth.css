@@ -414,16 +414,16 @@ h3 {
   margin-bottom: 0;
 }
 
-.line-link-card__beta,
+.line-link-card__status,
 .line-link-summary {
   font-weight: 800;
 }
 
-.line-link-card__beta {
+.line-link-card__status {
   border-radius: 999px;
   padding: 0.18rem 0.65rem;
-  color: var(--muted);
-  background: #edf1ef;
+  color: var(--accent-dark);
+  background: #e5f4ed;
   font-size: 0.76rem;
   white-space: nowrap;
 }
