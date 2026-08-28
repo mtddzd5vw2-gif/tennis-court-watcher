@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(42);
+select extensions.plan(61);
 
 insert into auth.users (id)
 values
@@ -385,6 +385,339 @@ select extensions.is(
   'the accepted canary is terminal and cannot be resent'
 );
 
+insert into auth.users (id)
+values ('10000000-0000-4000-8000-000000000013');
+
+update public.profiles
+set membership_status = 'active'::public.membership_status
+where id = '10000000-0000-4000-8000-000000000013';
+
+insert into public.notification_rules (
+  id,
+  user_id,
+  name,
+  is_enabled,
+  start_time,
+  end_time,
+  minimum_duration_minutes
+)
+values (
+  '20000000-0000-4000-8000-000000000013',
+  '10000000-0000-4000-8000-000000000013',
+  'LINE beta outsider rule',
+  true,
+  time '09:00',
+  time '12:00',
+  60
+);
+
+insert into public.line_account_links (
+  user_id,
+  line_user_id,
+  status
+)
+values (
+  '10000000-0000-4000-8000-000000000013',
+  'U33333333333333333333333333333333',
+  'active'
+);
+
+create temporary table line_beta_allowlist_replace as
+select *
+from public.replace_line_notification_beta_allowlist(array[
+  '10000000-0000-4000-8000-000000000011'::uuid,
+  '10000000-0000-4000-8000-000000000012'::uuid
+]);
+
+select extensions.is(
+  (select allowlisted_count from line_beta_allowlist_replace),
+  2,
+  'the operator RPC installs two limited-beta members atomically'
+);
+
+select extensions.is(
+  (select cancelled_message_count from line_beta_allowlist_replace),
+  0,
+  'initial beta installation has no stale backlog to cancel'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from private.line_notification_beta_allowlist
+  ),
+  2,
+  'the private allowlist contains only the requested members'
+);
+
+select extensions.throws_ok(
+  $$
+    select *
+    from public.replace_line_notification_beta_allowlist(
+      array(
+        select pg_catalog.gen_random_uuid()
+        from pg_catalog.generate_series(1, 21)
+      )
+    )
+  $$,
+  '22023',
+  'LINE beta allowlist input is invalid.',
+  'the operator RPC rejects more than 20 members'
+);
+
+create temporary table line_beta_candidates (
+  candidates jsonb not null
+) on commit drop;
+
+insert into line_beta_candidates (candidates)
+values (
+  jsonb_build_array(
+    jsonb_build_object(
+      'user_id', '10000000-0000-4000-8000-000000000011',
+      'channel', 'line',
+      'slot_id', 'line-beta-slot-one',
+      'facility_id', 'kamoike-prefectural',
+      'facility_name', '鴨池県営テニスコート',
+      'available_date', '2026-08-23',
+      'start_time', '09:00',
+      'end_time', '11:00',
+      'matched_rule_ids', jsonb_build_array(
+        '20000000-0000-4000-8000-000000000011'
+      ),
+      'payload', jsonb_build_object(
+        'court_name', 'Aコート',
+        'reservation_url', 'https://example.invalid/beta-one'
+      )
+    ),
+    jsonb_build_object(
+      'user_id', '10000000-0000-4000-8000-000000000012',
+      'channel', 'line',
+      'slot_id', 'line-beta-slot-two',
+      'facility_id', 'sumizei',
+      'facility_name', 'SuMIzeiテニスコート',
+      'available_date', '2026-08-23',
+      'start_time', '10:00',
+      'end_time', '12:00',
+      'matched_rule_ids', jsonb_build_array(
+        '20000000-0000-4000-8000-000000000012'
+      ),
+      'payload', jsonb_build_object(
+        'court_name', 'Bコート',
+        'reservation_url', 'https://example.invalid/beta-two'
+      )
+    ),
+    jsonb_build_object(
+      'user_id', '10000000-0000-4000-8000-000000000013',
+      'channel', 'line',
+      'slot_id', 'line-beta-slot-outsider',
+      'facility_id', 'sumizei',
+      'facility_name', 'SuMIzeiテニスコート',
+      'available_date', '2026-08-23',
+      'start_time', '09:00',
+      'end_time', '11:00',
+      'matched_rule_ids', jsonb_build_array(
+        '20000000-0000-4000-8000-000000000013'
+      ),
+      'payload', jsonb_build_object(
+        'court_name', 'Cコート',
+        'reservation_url', 'https://example.invalid/beta-outsider'
+      )
+    )
+  )
+);
+
+create temporary table line_beta_enqueue as
+select *
+from public.enqueue_line_notification_candidates(
+  (select candidates from line_beta_candidates),
+  false,
+  null,
+  true,
+  false
+);
+
+select extensions.is(
+  (select eligible_candidate_count from line_beta_enqueue),
+  2,
+  'limited-beta enqueue admits both allowlisted members'
+);
+
+select extensions.is(
+  (select inserted_delivery_item_count from line_beta_enqueue),
+  2,
+  'limited-beta enqueue writes only the two allowed delivery items'
+);
+
+select extensions.is(
+  (select inserted_message_count from line_beta_enqueue),
+  2,
+  'limited-beta enqueue creates one message per allowed member'
+);
+
+select extensions.is(
+  (
+    select count(*)::integer
+    from public.notification_delivery_items
+    where user_id = '10000000-0000-4000-8000-000000000013'
+      and slot_id = 'line-beta-slot-outsider'
+  ),
+  0,
+  'a linked active outsider receives no limited-beta delivery item'
+);
+
+select extensions.is(
+  (
+    select inserted_message_count
+    from public.enqueue_line_notification_candidates(
+      jsonb_build_array(
+        (select candidates -> 2 from line_beta_candidates)
+      ),
+      false,
+      null,
+      false,
+      true
+    )
+  ),
+  1,
+  'the explicit allow-all mode can independently queue the outsider test row'
+);
+
+create temporary table line_beta_claim as
+select *
+from public.claim_line_messages(
+  10,
+  null,
+  true,
+  false
+);
+
+select extensions.is(
+  (select count(*)::integer from line_beta_claim),
+  2,
+  'limited-beta claim returns both and only allowlisted members'
+);
+
+select extensions.is(
+  (
+    select status::text
+    from public.notification_messages
+    where user_id = '10000000-0000-4000-8000-000000000013'
+      and channel = 'line'::public.notification_channel
+  ),
+  'pending',
+  'the allowlist worker leaves an outsider message unclaimed'
+);
+
+delete from private.line_notification_beta_allowlist
+where user_id = '10000000-0000-4000-8000-000000000012';
+
+select extensions.is(
+  public.authorize_line_message_send(
+    (
+      select message_id from line_beta_claim
+      where user_id = '10000000-0000-4000-8000-000000000012'
+    ),
+    (
+      select locked_until from line_beta_claim
+      where user_id = '10000000-0000-4000-8000-000000000012'
+    ),
+    (
+      select line_user_id from line_beta_claim
+      where user_id = '10000000-0000-4000-8000-000000000012'
+    ),
+    repeat('c', 64),
+    null,
+    true,
+    false
+  ),
+  'cancelled',
+  'send authorization cancels a member removed after claim'
+);
+
+select extensions.is(
+  public.authorize_line_message_send(
+    (
+      select message_id from line_beta_claim
+      where user_id = '10000000-0000-4000-8000-000000000011'
+    ),
+    (
+      select locked_until from line_beta_claim
+      where user_id = '10000000-0000-4000-8000-000000000011'
+    ),
+    (
+      select line_user_id from line_beta_claim
+      where user_id = '10000000-0000-4000-8000-000000000011'
+    ),
+    repeat('d', 64),
+    null,
+    true,
+    false
+  ),
+  'authorized',
+  'send authorization keeps a retained beta member eligible'
+);
+
+update public.notification_messages
+set status = 'cancelled'::public.notification_message_status,
+    locked_at = null,
+    locked_until = null
+where user_id = '10000000-0000-4000-8000-000000000013'
+  and channel = 'line'::public.notification_channel;
+
+select extensions.ok(
+  not has_table_privilege(
+    'authenticated',
+    'private.line_notification_beta_allowlist',
+    'SELECT'
+  ),
+  'authenticated members cannot inspect the private beta allowlist'
+);
+
+select extensions.ok(
+  has_table_privilege(
+    'service_role',
+    'private.line_notification_beta_allowlist',
+    'SELECT'
+  ),
+  'service role can read the allowlist for delivery enforcement'
+);
+
+select extensions.ok(
+  not has_table_privilege(
+    'service_role',
+    'private.line_notification_beta_allowlist',
+    'INSERT'
+  ),
+  'service role cannot bypass the bounded replacement RPC'
+);
+
+select extensions.ok(
+  has_function_privilege(
+    'service_role',
+    'public.claim_line_messages(integer,uuid,boolean,boolean)',
+    'EXECUTE'
+  ),
+  'service role can execute the allowlist-aware LINE claim'
+);
+
+select extensions.ok(
+  not has_function_privilege(
+    'service_role',
+    'public.claim_line_messages(integer,uuid,boolean)',
+    'EXECUTE'
+  ),
+  'service role cannot execute the deprecated claim boundary'
+);
+
+select extensions.ok(
+  (
+    select relforcerowsecurity
+    from pg_catalog.pg_class
+    where oid = 'private.line_notification_beta_allowlist'::regclass
+  ),
+  'the private beta allowlist forces RLS'
+);
+
 select extensions.is(
   (
     select inserted_event_count
@@ -482,7 +815,7 @@ select extensions.is(
 select extensions.ok(
   not has_function_privilege(
     'authenticated',
-    'public.claim_line_messages(integer,uuid,boolean)',
+    'public.claim_line_messages(integer,uuid,boolean,boolean)',
     'EXECUTE'
   ),
   'authenticated members cannot claim LINE messages'
@@ -491,7 +824,7 @@ select extensions.ok(
 select extensions.ok(
   has_function_privilege(
     'service_role',
-    'public.claim_line_messages(integer,uuid,boolean)',
+    'public.claim_line_messages(integer,uuid,boolean,boolean)',
     'EXECUTE'
   ),
   'service role can claim LINE messages'

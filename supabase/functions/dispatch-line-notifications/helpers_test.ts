@@ -8,11 +8,44 @@ import {
   hmacPayloadFingerprint,
   LINE_CANARY_TEST_TEXT,
   normalizeLineRequestId,
+  readLineRolloutControls,
   renderLineMessage,
 } from "./helpers.ts";
 
 const MESSAGE_ID = "123e4567-e89b-42d3-a456-426614174000";
 const LINE_USER_ID = `U${"b".repeat(32)}`;
+
+test("LINE rollout controls permit exactly one live scope", () => {
+  assert.deepEqual(
+    readLineRolloutControls(MESSAGE_ID, "false", "false"),
+    { canaryUserId: MESSAGE_ID, useAllowlist: false, allowAll: false },
+  );
+  assert.deepEqual(
+    readLineRolloutControls(undefined, "true", "false"),
+    { canaryUserId: null, useAllowlist: true, allowAll: false },
+  );
+  assert.deepEqual(
+    readLineRolloutControls(undefined, "false", "true"),
+    { canaryUserId: null, useAllowlist: false, allowAll: true },
+  );
+
+  assert.equal(
+    readLineRolloutControls(undefined, "false", "false"),
+    null,
+  );
+  assert.equal(
+    readLineRolloutControls(MESSAGE_ID, "true", "false"),
+    null,
+  );
+  assert.equal(
+    readLineRolloutControls("not-a-uuid", "true", "false"),
+    null,
+  );
+  assert.equal(
+    readLineRolloutControls(undefined, "TRUE", "false"),
+    null,
+  );
+});
 
 test("LINE message rendering is deterministic and omits unsafe links", () => {
   const item = {

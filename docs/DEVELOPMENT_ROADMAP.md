@@ -37,7 +37,7 @@ Phase設計書に残る「今回」「後続PR」「未実装」等の記述は�
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページ、退会を提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
 | Phase 3 | 完了 | 利用者別メール通知、配信feedback、unsubscribe / re-enable、90日retention cleanupまでproduction acceptance完了 |
-| Phase 4 | 実装着手 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
+| Phase 4 | 単一会員canary完了・限定β準備中 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
 | Phase 7 | 計画 | 体育館、野球場、会議室などへ施設種別を広げる |
@@ -441,7 +441,7 @@ Actionsで照合を実行するには、Repository Variable
 
 ## Phase 4: LINE公式アカウント連携と利用者別LINE通知
 
-**状態: account link本番確認済み。利用者別配信は初期OFFで実装・隔離環境検証済み。**
+**状態: account link、単一会員LINE canary、GAS互換webhook bridge切替完了。限定βは初期OFFで準備中。**
 
 [Phase 4 LINE通知設計](./PHASE4_LINE_NOTIFICATION_DESIGN.md)で採用方式と実装順序を定義する。
 LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人向け安全な状態RPCは
@@ -449,9 +449,11 @@ LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人�
 LINE Login開始・callback・解除のEdge Functionと、原子的なsession消費・一対一連携・
 解除RPCは本番反映済みである。My Pageの連携状態・開始・二段階解除UIも実装し、
 2026-08-21にスマホでの正方向acceptanceを完了した。署名検証webhook、冪等な
-block/unfollow反映、利用者別`line` channel queue、worker、retry、180通guardは
-初期OFFで実装し、隔離ローカルDBで検証済みである。本番migration・Function deploy・
-shadow/canary/限定βの段階有効化とproduction acceptanceは未完了である。
+block/unfollow反映、利用者別`line` channel queue、worker、retry、180通guardは本番反映済みである。
+2026-08-27に単一会員1通の実機canaryを完了し、delivery gateをOFFへ戻した後の約20時間shadowも
+queue書込、Push、email副作用、異常終了0で確認した。GAS互換webhook bridgeへの切替も完了した。
+最大20会員のprivate server-side allowlistは前方変更として実装中で、限定βと全会員向けの
+production acceptanceは未完了である。
 
 ### 目的
 

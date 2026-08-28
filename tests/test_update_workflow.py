@@ -287,6 +287,9 @@ def test_user_line_enqueue_defaults_to_shadow_and_requires_explicit_rollout() ->
         "LINE_NOTIFICATION_CANARY_USER_ID": (
             "${{ secrets.LINE_NOTIFICATION_CANARY_USER_ID }}"
         ),
+        "LINE_NOTIFICATION_USE_ALLOWLIST": (
+            "${{ vars.LINE_NOTIFICATION_USE_ALLOWLIST || 'false' }}"
+        ),
         "LINE_NOTIFICATION_ALLOW_ALL": (
             "${{ vars.LINE_NOTIFICATION_ALLOW_ALL || 'false' }}"
         ),

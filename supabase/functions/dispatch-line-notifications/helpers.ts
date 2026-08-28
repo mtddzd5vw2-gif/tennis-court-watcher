@@ -25,6 +25,12 @@ export interface LineFailure {
     | "line_client_error";
 }
 
+export interface LineRolloutControls {
+  canaryUserId: string | null;
+  useAllowlist: boolean;
+  allowAll: boolean;
+}
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LINE_USER_ID_PATTERN = /^U[0-9a-f]{32}$/;
@@ -35,6 +41,38 @@ const SETTINGS_URL =
   "https://tenniscourtwatcher.com/account/index.html#line-link-title";
 export const LINE_CANARY_TEST_TEXT =
   "【テスト通知】鹿児島テニス空き情報 LINE通知の動作確認です。";
+
+export function readLineRolloutControls(
+  canaryValue: string | undefined,
+  useAllowlistValue: string | undefined,
+  allowAllValue: string | undefined,
+): LineRolloutControls | null {
+  if (
+    (useAllowlistValue !== "true" && useAllowlistValue !== "false") ||
+    (allowAllValue !== "true" && allowAllValue !== "false")
+  ) {
+    return null;
+  }
+  const useAllowlist = useAllowlistValue === "true";
+  const allowAll = allowAllValue === "true";
+  const canary = canaryValue?.trim() ?? "";
+  const normalizedCanary = UUID_PATTERN.test(canary)
+    ? canary.toLowerCase()
+    : null;
+  if (canary.length > 0 && normalizedCanary === null) {
+    return null;
+  }
+  const rolloutModeCount = Number(normalizedCanary !== null) +
+    Number(useAllowlist) + Number(allowAll);
+  if (rolloutModeCount !== 1) {
+    return null;
+  }
+  return {
+    canaryUserId: normalizedCanary,
+    useAllowlist,
+    allowAll,
+  };
+}
 
 export function validHttpUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.trim().length === 0) {

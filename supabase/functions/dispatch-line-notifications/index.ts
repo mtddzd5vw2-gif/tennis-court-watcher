@@ -7,7 +7,9 @@ import {
   hmacPayloadFingerprint,
   LINE_CANARY_TEST_TEXT,
   LineNotificationItem,
+  LineRolloutControls,
   normalizeLineRequestId,
+  readLineRolloutControls,
   renderLineMessage,
 } from "./helpers.ts";
 
@@ -18,9 +20,6 @@ const MAX_BATCH_SIZE = 10;
 const LINE_TIMEOUT_MS = 15_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 16 * 1024;
 const USER_AGENT = "tennis-court-watcher-line-worker/1.0";
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 interface ClaimedMessage {
   message_id: string;
   user_id: string;
@@ -30,11 +29,6 @@ interface ClaimedMessage {
   locked_until: string;
   test_text: string | null;
   items: LineNotificationItem[];
-}
-
-interface RolloutControls {
-  canaryUserId: string | null;
-  allowAll: boolean;
 }
 
 interface Metrics {
@@ -68,8 +62,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return jsonResponse(503, { error: "delivery_disabled" });
   }
 
-  const rolloutControls = readRolloutControls(
+  const rolloutControls = readLineRolloutControls(
     Deno.env.get("LINE_NOTIFICATION_CANARY_USER_ID"),
+    Deno.env.get("LINE_NOTIFICATION_USE_ALLOWLIST"),
     Deno.env.get("LINE_NOTIFICATION_ALLOW_ALL"),
   );
   if (rolloutControls === null) {
@@ -120,6 +115,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     {
       batch_size: claimSize,
       p_canary_user_id: rolloutControls.canaryUserId,
+      p_use_allowlist: rolloutControls.useAllowlist,
       p_allow_all: rolloutControls.allowAll,
     },
   );
@@ -151,7 +147,7 @@ async function processMessage(
   message: ClaimedMessage,
   channelAccessToken: string,
   payloadHmacKey: string,
-  rolloutControls: RolloutControls,
+  rolloutControls: LineRolloutControls,
   metrics: Metrics,
 ): Promise<void> {
   try {
@@ -170,6 +166,7 @@ async function processMessage(
         p_line_user_id: message.line_user_id,
         p_provider_payload_fingerprint: payloadFingerprint,
         p_canary_user_id: rolloutControls.canaryUserId,
+        p_use_allowlist: rolloutControls.useAllowlist,
         p_allow_all: rolloutControls.allowAll,
       });
     if (authorizationError !== null) {
@@ -423,30 +420,6 @@ function isClaimedMessage(value: unknown): value is ClaimedMessage {
     typeof candidate.locked_until === "string" &&
     (hasRegularItems || hasCanaryText)
   );
-}
-
-function readRolloutControls(
-  canaryValue: string | undefined,
-  allowAllValue: string | undefined,
-): RolloutControls | null {
-  if (allowAllValue !== "true" && allowAllValue !== "false") {
-    return null;
-  }
-  const allowAll = allowAllValue === "true";
-  const canary = canaryValue?.trim() ?? "";
-  const normalizedCanary = UUID_PATTERN.test(canary)
-    ? canary.toLowerCase()
-    : null;
-  if (
-    (allowAll && canary.length > 0) ||
-    (!allowAll && normalizedCanary === null)
-  ) {
-    return null;
-  }
-  return {
-    canaryUserId: normalizedCanary,
-    allowAll,
-  };
 }
 
 function emptyMetrics(quotaConsumption: number, quotaLimit: number): Metrics {

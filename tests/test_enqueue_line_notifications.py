@@ -77,18 +77,20 @@ def test_shadow_request_is_no_write_and_canary_optional() -> None:
         [enqueue.build_enqueue_candidate(candidate())],
         shadow_mode=True,
         canary_user_id=None,
+        use_allowlist=False,
         allow_all=False,
         opener=opener,
     )
     body = json.loads(observed["request"].data)
     assert body["p_shadow_mode"] is True
     assert body["p_canary_user_id"] is None
+    assert body["p_use_allowlist"] is False
     assert body["p_allow_all"] is False
     assert result["inserted_delivery_item_count"] == 0
     assert response.closed
 
 
-def test_live_enqueue_fails_closed_without_canary_or_allow_all() -> None:
+def test_live_enqueue_fails_closed_without_a_rollout_scope() -> None:
     with pytest.raises(enqueue.LineNotificationEnqueueError):
         enqueue.enqueue_candidates(
             "https://abcdefghijklmnopqrst.supabase.co",
@@ -96,6 +98,35 @@ def test_live_enqueue_fails_closed_without_canary_or_allow_all() -> None:
             [],
             shadow_mode=False,
             canary_user_id=None,
+            use_allowlist=False,
+            allow_all=False,
+        )
+
+
+def test_live_allowlist_is_an_explicit_rollout_scope() -> None:
+    result = enqueue.enqueue_candidate_batch(
+        "https://abcdefghijklmnopqrst.supabase.co",
+        "service-role-secret",
+        [enqueue.build_enqueue_candidate(candidate())],
+        shadow_mode=False,
+        canary_user_id=None,
+        use_allowlist=True,
+        allow_all=False,
+        opener=lambda *_args, **_kwargs: FakeResponse(aggregate(shadow=False)),
+    )
+
+    assert result["inserted_message_count"] == 1
+
+
+def test_rollout_scopes_are_mutually_exclusive() -> None:
+    with pytest.raises(enqueue.LineNotificationEnqueueError):
+        enqueue.enqueue_candidates(
+            "https://abcdefghijklmnopqrst.supabase.co",
+            "service-role-secret",
+            [],
+            shadow_mode=False,
+            canary_user_id=USER_ID,
+            use_allowlist=True,
             allow_all=False,
         )
 
@@ -119,6 +150,7 @@ def test_live_canary_request_never_logs_or_redirects_sensitive_values() -> None:
             [enqueue.build_enqueue_candidate(candidate())],
             shadow_mode=False,
             canary_user_id=USER_ID,
+            use_allowlist=False,
             allow_all=False,
             opener=redirect,
         )
@@ -142,6 +174,7 @@ def test_response_contract_rejects_wrong_shape_mode_or_counts(value: Any) -> Non
             [enqueue.build_enqueue_candidate(candidate())],
             shadow_mode=True,
             canary_user_id=None,
+            use_allowlist=False,
             allow_all=False,
             opener=lambda *_args, **_kwargs: FakeResponse(value),
         )

@@ -12,6 +12,10 @@ MIGRATION = (
     ROOT
     / "supabase/migrations/20260821095256_add_line_notification_delivery.sql"
 )
+BETA_MIGRATION = (
+    ROOT
+    / "supabase/migrations/20260828001723_add_line_notification_rollout_allowlist.sql"
+)
 CONFIG = ROOT / "supabase/config.toml"
 WEBHOOK = ROOT / "supabase/functions/line-messaging-webhook"
 WORKER = ROOT / "supabase/functions/dispatch-line-notifications"
@@ -26,11 +30,11 @@ def compact(value: str) -> str:
     return " ".join(re.sub(r"--.*?$", "", value, flags=re.MULTILINE).split())
 
 
-def function_definition(name: str) -> str:
+def function_definition(name: str, migration: Path = MIGRATION) -> str:
     match = re.search(
         rf"create(?: or replace)? function public\.{re.escape(name)}\b"
         rf".*?\$\$;(?:\s|$)",
-        read(MIGRATION).lower(),
+        read(migration).lower(),
         flags=re.DOTALL,
     )
     assert match, f"missing function {name}"
@@ -39,7 +43,9 @@ def function_definition(name: str) -> str:
 
 def test_line_delivery_is_one_forward_migration_and_parses() -> None:
     assert MIGRATION.is_file()
+    assert BETA_MIGRATION.is_file()
     parse_sql(read(MIGRATION))
+    parse_sql(read(BETA_MIGRATION))
     changed_existing = []
     for path in (ROOT / "supabase/migrations").glob("*.sql"):
         if path.name >= MIGRATION.name:
@@ -52,6 +58,53 @@ def test_line_delivery_is_one_forward_migration_and_parses() -> None:
         if result.returncode != 0:
             changed_existing.append(path.name)
     assert changed_existing == []
+
+
+def test_beta_allowlist_is_private_capped_and_service_role_managed() -> None:
+    sql = compact(read(BETA_MIGRATION).lower())
+    assert "create schema if not exists private" in sql
+    assert "create table private.line_notification_beta_allowlist" in sql
+    assert "user_id uuid primary key" in sql
+    assert "references public.profiles(id) on delete cascade" in sql
+    assert "enable row level security" in sql
+    assert "force row level security" in sql
+    assert "v_max_allowlisted_members constant pg_catalog.int4 := 20" in sql
+    assert "security definer set search_path = ''" in function_definition(
+        "replace_line_notification_beta_allowlist", BETA_MIGRATION
+    )
+    assert "grant select on table private.line_notification_beta_allowlist to service_role" in sql
+    assert "grant execute on function public.replace_line_notification_beta_allowlist(uuid[]) to service_role" in sql
+    assert "grant insert on table private.line_notification_beta_allowlist" not in sql
+
+
+def test_beta_rollout_is_rechecked_at_all_three_delivery_boundaries() -> None:
+    enqueue = function_definition(
+        "enqueue_line_notification_candidates", BETA_MIGRATION
+    )
+    claim = function_definition("claim_line_messages", BETA_MIGRATION)
+    authorization = function_definition(
+        "authorize_line_message_send", BETA_MIGRATION
+    )
+
+    for body in (enqueue, claim, authorization):
+        assert "p_use_allowlist boolean" in body
+        assert "private.line_notification_beta_allowlist" in body
+        assert "p_allow_all" in body
+        assert "p_canary_user_id" in body
+        assert "pg_advisory_xact_lock_shared(20260828001723)" in body
+    assert "v_rollout_mode_count > 1" in enqueue
+    assert "v_rollout_mode_count <> 1" in claim
+    assert "v_rollout_mode_count <> 1" in authorization
+    assert "where not p_shadow_mode" in enqueue
+    assert "if not coalesce(" in authorization
+    assert "return 'cancelled'" in authorization
+
+
+def test_deprecated_rollout_rpc_signatures_are_revoked() -> None:
+    sql = compact(read(BETA_MIGRATION).lower())
+    assert "revoke all on function public.enqueue_line_notification_candidates( jsonb, boolean, uuid, boolean ) from public, anon, authenticated, service_role" in sql
+    assert "revoke all on function public.claim_line_messages(integer, uuid, boolean) from public, anon, authenticated, service_role" in sql
+    assert "revoke all on function public.authorize_line_message_send( uuid, timestamptz, text, text, uuid, boolean ) from public, anon, authenticated, service_role" in sql
 
 
 def test_webhook_ledger_is_private_minimal_and_idempotent() -> None:
@@ -216,8 +269,10 @@ def test_worker_checks_quota_before_claim_and_uses_retry_key() -> None:
     assert "limit <= 180" in source
     assert 'Deno.env.get("ENABLE_USER_LINE_NOTIFICATIONS") !== "true"' in source
     assert 'Deno.env.get("LINE_NOTIFICATION_CANARY_USER_ID")' in source
+    assert 'Deno.env.get("LINE_NOTIFICATION_USE_ALLOWLIST")' in source
     assert 'Deno.env.get("LINE_NOTIFICATION_ALLOW_ALL")' in source
     assert "p_canary_user_id: rolloutControls.canaryUserId" in source
+    assert "p_use_allowlist: rolloutControls.useAllowlist" in source
     assert "p_allow_all: rolloutControls.allowAll" in source
     assert "message.test_text ?? renderLineMessage(message.items)" in source
     assert '"x-line-retry-key": deterministicLineRetryKey(' in source
@@ -231,5 +286,5 @@ def test_line_edge_function_unit_tests_are_present() -> None:
     assert (WEBHOOK / "helpers_test.ts").is_file()
     assert (WORKER / "helpers_test.ts").is_file()
     assert PGTAP.is_file()
-    assert "select extensions.plan(42);" in read(PGTAP)
+    assert "select extensions.plan(61);" in read(PGTAP)
     parse_sql(read(PGTAP))
