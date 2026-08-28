@@ -5,9 +5,9 @@
 本書は、Tennis Court Watcherの**現在利用者へ提供しているサービス仕様の正**として、
 利用者向け機能、主要データ、認証・認可、システム責務、拡張方針を定義する。
 
-2026-08-21時点でPhase 0〜3は完了している。
+2026-08-28時点でPhase 0〜3は完了している。
 Phase 1の退会もproduction acceptanceまで完了した。
-Phase 4はaccount linkのDB基盤とLINE Login server-side境界を本番反映し、My Pageの連携状態・開始・二段階解除UIとスマホでの正方向acceptanceまで完了している。webhookと利用者別LINE配信は初期OFFで実装・隔離環境検証済みだが、本番migration・Function deploy・段階有効化・production acceptanceは未完了である。
+Phase 4もaccount link、My Page UI、Messaging API webhookとGAS bridge、利用者別LINE queue/worker、単一会員canary、限定β、全会員向け段階有効化まで本番反映し、production acceptanceを完了した。
 
 長期的な目的は[Project Vision](./PROJECT_VISION.md)、
 現在地・実装順序・完了条件は[Development Roadmap](./DEVELOPMENT_ROADMAP.md)を参照する。
@@ -346,6 +346,7 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - 重複防止の正は`unique (user_id, channel, slot_id)`とし、emailとLINEを別channelとして保持する。
 - email workerとLINE workerは明示的なchannel条件と別credentialを持ち、互いのmessageをclaimしない。
 - LINE enqueueは初期OFFかつshadowを既定とする。live enqueueは単一会員canary、最大20会員のprivate server-side allowlist、明示的な全会員許可のいずれか1モードだけを許可する。空allowlist、上限超過、複数モード同時指定はfail closedする。
+- 本番の通常運転は`LINE_NOTIFICATION_USE_ALLOWLIST=false`、`LINE_NOTIFICATION_ALLOW_ALL=true`とし、active会員・active LINE連携・有効な通知条件をすべて満たす会員を対象とする。
 - 限定βallowlistはSupabase Auth UUIDだけを保持し、一般Data APIへ公開しない。enqueue、LINE worker claim、送信直前authorizationで同じallowlistを再確認する。置換は信頼済みDB管理者だけが実行できるprivate関数に限定し、service-roleを含むアプリケーションroleからは直接書込も関数実行もできない。
 - Messaging API webhookはraw bodyのHMAC-SHA256署名をJSON parse前に検証し、event IDで重複を排除する。保存対象はevent ID、event種別、発生時刻だけとし、LINE user IDやraw payloadをledgerへ保存しない。
 - Push送信では内部message UUIDを最初の試行からretry keyとして固定し、同じrecipientとpayloadの再送だけを許可する。providerの5xx・timeoutだけをbounded retryし、client error・無効token・上限到達は再送しない。
@@ -438,7 +439,8 @@ Phase 2のテーブル・RLS・初期マスター、`save_notification_rule` RPC
 
 Phase 3のメール通知データモデルは実装・production rollout済みである。
 メールアドレスはSupabase Authを正とし、通知用public schemaへ複製しない。
-利用者別LINE通知用のデータモデルはPhase 4で前方追加済みで、限定βallowlistは本番反映前である。
+利用者別LINE通知用のデータモデルと限定βallowlistはPhase 4で本番反映済みである。通常運転は
+全会員許可モードとし、allowlistは限定βへrollbackできるようprivate schemaに保持する。
 
 詳細は [Phase 2 通知条件データモデル設計](./PHASE2_NOTIFICATION_RULES_DESIGN.md)、
 [Phase 3 利用者別メール通知設計](./PHASE3_USER_EMAIL_NOTIFICATION_DESIGN.md)を参照する。

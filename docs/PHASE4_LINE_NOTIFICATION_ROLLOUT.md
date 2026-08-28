@@ -2,7 +2,7 @@
 
 ## 1. 現在地
 
-2026-08-28時点で、次の実装と本番単一会員canaryまで完了している。
+2026-08-28時点で、次の実装と全会員向け本番有効化まで完了している。
 
 - raw bodyの署名をJSON parse前に検証するMessaging API webhook
 - webhook event IDによる重複排除と、順序逆転に耐えるfollow/unfollow反映
@@ -35,7 +35,7 @@
 email副作用、異常終了は0だった。2026-08-28にPR #69のprivate allowlistを本番反映し、
 1会員を登録した。shadow no-write、固定テスト1通の`accepted`と実機受信、使用量20→21、
 retry・失敗・email副作用0を確認した。PR #70のdispatch-only modeによる空queue no-op後、
-`USE_ALLOWLIST=true`、`ALLOW_ALL=false`の1会員限定βを開始した。全会員向けdeliveryは未開始である。
+`USE_ALLOWLIST=true`、`ALLOW_ALL=false`の1会員限定βを開始した。
 
 同日、GitHub native scheduleが複数枠でrunを生成しなかった際、2026-08-26に作成された古い
 `queued` run `32984358881`がGitHub APIに残留し、Supabase watchdogが継続的に
@@ -52,7 +52,25 @@ dispatchはLINE/emailとも0、LINE active queueとallowlist外queueは0、使�
 同時点の全会員開放前snapshotは、active会員1、active LINE連携1、有効rule所有者1、
 allowlist会員1である。したがって現在の即時配信対象は限定βと同じ1会員だが、全会員許可後は
 将来activeになりLINE連携と有効ruleをそろえた会員も自動的に対象になる。これは別の明示承認を
-必要とする運用境界であり、`LINE_NOTIFICATION_ALLOW_ALL=false`を維持している。
+必要とする運用境界である。所有者から「全会員向けLINE通知を有効化して」と明示承認を得た後、
+15:30 JSTから次のproduction acceptanceを実施した。
+
+- 切替前はactive会員1、active LINE連携1、有効rule所有者1、allowlist会員1、
+  LINE active queue・有効lease・allowlist外queue 0、使用量21/180
+- GitHubのscheduled/enqueue/dispatchを停止しshadowへ変更、Supabase最終gateを停止、
+  scheduler watchdogを`observe`へ一時変更して自動fallbackも停止
+- GitHubとSupabaseを`USE_ALLOWLIST=false`、`ALLOW_ALL=true`の単一モードへ同期
+- shadow run `33148382137`で1 rule・11 slots、候補・eligible・queue書込0を確認
+- live enqueue run `33148524686`で候補0、LINE/email queue変化0、availability更新とPages成功を確認
+- dispatch-only run `33148715346`でclaimed・accepted・retry・failure・cancelled 0、
+  使用量21/180、active queue・lease 0を確認
+- scheduled/enqueue/dispatch、Supabase最終gate、watchdog dispatchを復帰し、15:42 JSTの実Cronで
+  `fresh`、`active_run_count=0`、追加dispatch 0を確認
+
+最終状態はGitHubとSupabaseの両方で`USE_ALLOWLIST=false`、`ALLOW_ALL=true`であり、
+全会員向け利用者別LINE通知を本番運転中である。現時点の対象会員は1会員のため切替に伴うPushは
+発生していない。今後active会員・active LINE連携・有効ruleを満たす会員は同じ基盤で自動的に
+対象になる。
 
 ## 2. 変更しない境界
 
@@ -321,7 +339,8 @@ Supabase最終gate、GitHub dispatchの順で有効化する。少数会員で1�
 
 1. `ENABLE_SCHEDULED_RUNS=false`、`ENABLE_USER_LINE_ENQUEUE=false`、
    `ENABLE_USER_LINE_DISPATCH=false`にする。
-2. Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=false`にする。
+2. Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=false`、`WATCHDOG_MODE=observe`にする。
+   watchdogのfallbackは`workflow_dispatch`であり、GitHubのscheduled gateだけでは停止しない。
 3. 実行中のavailability workflowがないことと、最長5分のlease失効後に
    LINE active queue、`active_processing_count`がともに0であることを確認する。
 4. GitHubとSupabaseのcanary UUIDが未設定であることを確認する。
@@ -335,7 +354,7 @@ Supabase最終gate、GitHub dispatchの順で有効化する。少数会員で1�
    送信時点でもactive会員・active LINE連携・有効ruleを満たし、件数が想定内であることを確認する。
 9. Supabase最終gate、GitHub dispatchの順で有効化し、dispatch-onlyを1回実行する。
 10. accepted、retry、failure、cancelled、quota、email副作用をaggregateで確認してから
-    `ENABLE_SCHEDULED_RUNS=true`へ戻す。
+    `ENABLE_SCHEDULED_RUNS=true`、`WATCHDOG_MODE=dispatch`へ戻す。
 
 切替後の最初の定期runでも同じaggregateを確認する。recipient不一致、allowlist modeの残留、
 モード二重有効、active queue滞留、quota異常が1件でもあれば完了扱いにせず、直ちにrollbackする。
@@ -406,5 +425,7 @@ DB migrationは前方修正を原則とし、既存queue schemaやenumを巻き�
 - rollback後に未送信LINE backlogとactive leaseが残らない
 - secret、LINE user ID、payload本文がrepository、Actions log、Artifact、公開Pagesにない
 
-単一会員canaryの項目は完了済みである。限定βは追加3項目を含む証跡を残した後にだけ
-完了扱いとする。
+単一会員canary、限定β、全会員向けproduction acceptanceは完了済みである。条件一致が0だった
+切替runではPushを発生させず、既に限定βで実機受信済みの同一会員だけが現時点の対象である。
+今後の条件一致通知は通常監視としてaccepted、retry、failure、quota、email副作用をaggregateで
+確認する。
