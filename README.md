@@ -346,7 +346,7 @@ Phase 3.5aでは、Resend送信payloadへ内部message UUIDのcorrelation tagを
 
 Phase 3.5bでは、利用者単位のprivate unsubscribe token、service-role専用RPC、Cloudflare Workerの公開confirmation/RFC 8058 endpoint、body-onlyのSupabase unsubscribe Function、メールfooterと`List-Unsubscribe` headers、Account UIを実装しました。Supabase hosted GETとInvocation Logsの実測を受けて直接Supabase URLを棄却し、`unsubscribe.tenniscourtwatcher.com`のCloudflare Workerを公開入口としました。production rolloutとacceptanceは2026-08-18に完了し、本文footerは認証済みAccount UI、RFC 8058 capabilityはheadersだけに分離しています。本人opt-outは`disabled_reason = NULL`のまま保持し、bounce・complaint・suppressionの理由は上書きもブラウザからの解除もしません。必須log boundary、maintenance guard、rollout順は[Phase 3 Email Unsubscribe Runbook](docs/PHASE3_EMAIL_UNSUBSCRIBE.md)を参照してください。
 
-Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはMessaging API channelで使っていた別用途Google Apps Scriptとは異なります。Phase 4では会員連携、channel分離queue、worker、retry、180通guardを本番反映し、2026-08-27に単一会員1通の実機canaryを完了しました。Supabase署名検証webhookから既存GASへraw bodyを変えず転送するbridgeへの切替も完了し、既存GASの実メッセージ確認だけは所有者判断で省略しています。delivery gateはOFFへ戻して約20時間のshadowを安全に観測済みです。最大20会員のprivate server-side allowlistは前方変更として実装し、本番反映前のため限定βはまだ開始していません。
+Phase 0から残っていた単一通知先のlegacy管理者LINE経路はPhase 3.4.3で退役しました。これはMessaging API channelで使っていた別用途Google Apps Scriptとは異なります。Phase 4では会員連携、channel分離queue、worker、retry、180通guardを本番反映し、2026-08-27に単一会員1通の実機canaryを完了しました。Supabase署名検証webhookから既存GASへraw bodyを変えず転送するbridgeへの切替も完了し、既存GASの実メッセージ確認だけは所有者判断で省略しています。約20時間のshadow観測後、最大20会員のprivate server-side allowlistを本番反映し、2026-08-28に1会員で限定βを開始しました。全会員許可はOFFのままです。
 
 手動実行の `dry_run=true` では、取得とArtifact生成は行いますが、リポジトリ内データの更新、commit、push、Pagesデプロイ、email/LINE enqueue・dispatchは行いません。
 
@@ -415,7 +415,7 @@ Launch Readiness Gateは完了し、Phase 4へ進みます。
 4. GitHub Actions外部ActionのコミットSHA固定 — 完了（PR #56）
 5. Monitoring Policyと監視範囲外条件のUI表示 — 完了（PR #57）
 6. 鹿児島βで使用する運用指標の決定 — 完了（Launch Readiness Review）
-7. Phase 4の利用者別LINE通知 — account link、queue/worker、本番単一会員canary、既存GAS互換bridge切替完了。次はprivate allowlistの本番反映と限定β
+7. Phase 4の利用者別LINE通知 — account link、queue/worker、本番単一会員canary、既存GAS互換bridge、private allowlistを本番反映し、1会員で限定β運転中
 
 取得元の利用許可は取得済みである。アクセス負荷とβ運用指標は
 [Launch Readiness Review](docs/LAUNCH_READINESS_REVIEW.md)を参照する。
@@ -423,7 +423,7 @@ Launch Readiness Gateは完了し、Phase 4へ進みます。
 ## 注意事項
 
 - 自動予約は実装していません。
-- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、退会処理、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。Phase 4はaccount link、本番migration/functions、単一会員LINE canary、既存GAS互換webhook切替まで完了しました。全会員deliveryはOFFのままで、private allowlistの本番反映と限定βが残っています。
+- 会員DB、規約同意履歴、RLS、規約同意RPC、会員情報表示、退会処理、Phase 2の通知条件、Phase 3の利用者別メールqueue/worker、自動enqueue/dispatch、delivery feedback、unsubscribe / re-enable、90日retention cleanupは本番反映・production acceptanceまで完了しています。Phase 4はaccount link、本番migration/functions、単一会員LINE canary、既存GAS互換webhook、private allowlistを本番反映し、1会員で限定β運転中です。全会員deliveryはOFFのままです。
 - 短い間隔でのアクセスや過剰な並列実行は避けてください。
 - 予約サイトの仕様変更により取得できなくなる可能性があります。
 - `availability.json` とGitHub Pagesは公開情報として扱ってください。

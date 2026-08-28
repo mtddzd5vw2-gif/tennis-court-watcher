@@ -27,11 +27,12 @@
 - Actions run `33036338712`でshadow-onlyを実行し、1 rule・12 slotsを評価、候補0、
   LINE/email queue変化0、Push 0、commit/Pages deploy 0を確認
 
-LINE delivery gateはcanary後にOFFへ戻した。既存GASの実メッセージ応答確認は、用途上の
-重要度が低いという所有者判断により2026-08-27に省略した。限定βまたは全会員向けdeliveryは
-未開始であり、提供中と表示しない。PR #68はmainへ統合済みで、約20時間のshadow観測では
-queue書込、Push、email副作用、異常終了は0だった。複数UUIDのserver-side allowlistは
-前方migrationとして実装中であり、本番反映前は従来gateだけが有効である。
+既存GASの実メッセージ応答確認は、用途上の重要度が低いという所有者判断により
+2026-08-27に省略した。PR #68のbridge切替後、約20時間のshadow観測ではqueue書込、Push、
+email副作用、異常終了は0だった。2026-08-28にPR #69のprivate allowlistを本番反映し、
+1会員を登録した。shadow no-write、固定テスト1通の`accepted`と実機受信、使用量20→21、
+retry・失敗・email副作用0を確認した。PR #70のdispatch-only modeによる空queue no-op後、
+`USE_ALLOWLIST=true`、`ALLOW_ALL=false`の1会員限定βを開始した。全会員向けdeliveryは未開始である。
 
 ## 2. 変更しない境界
 
@@ -56,7 +57,7 @@ LINE Pushが実行されるには、すべての条件が同時に必要であ�
 
 shadow modeは候補を評価して集計だけを返し、queueへ書き込まない。live enqueueとworkerは
 canary、allowlist、allow-allのどれもない場合、または複数モードが同時に指定された場合に
-失敗する。allowlistは一般APIへ公開しない`private` schemaへUUIDだけを保存し、operator RPC、
+失敗する。allowlistは一般APIへ公開しない`private` schemaへUUIDだけを保存し、private管理関数、
 enqueue、claim、送信直前の各境界で最大20会員を強制する。空または20会員超のallowlistでは
 Pushへ進まない。
 
