@@ -37,7 +37,7 @@ Phase設計書に残る「今回」「後続PR」「未実装」等の記述は�
 | Phase 1 | 完成済み | 規約同意・メール認証を伴う会員登録、ログイン、マイページ、退会を提供する |
 | Phase 2 | 完了 | 通知条件UI、原子的保存、1利用者5件の上限、空き候補との照合を提供する |
 | Phase 3 | 完了 | 利用者別メール通知、配信feedback、unsubscribe / re-enable、90日retention cleanupまでproduction acceptance完了 |
-| Phase 4 | 1会員限定β運転中 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
+| Phase 4 | 全会員向け本番運転中 | LINE公式アカウントと会員を連携し、利用者別LINE通知を行う |
 | Phase 5 | 計画 | 無料・有料プランを提供する |
 | Phase 6 | 計画 | 福岡・東京など鹿児島市以外へ展開する |
 | Phase 7 | 計画 | 体育館、野球場、会議室などへ施設種別を広げる |
@@ -441,7 +441,7 @@ Actionsで照合を実行するには、Repository Variable
 
 ## Phase 4: LINE公式アカウント連携と利用者別LINE通知
 
-**状態: account link、単一会員LINE canary、GAS互換webhook bridge、private allowlistを本番反映し、1会員限定βを運転中。**
+**状態: account link、単一会員LINE canary、GAS互換webhook bridge、限定βを完了し、全会員向け利用者別LINE通知を本番運転中。**
 
 [Phase 4 LINE通知設計](./PHASE4_LINE_NOTIFICATION_DESIGN.md)で採用方式と実装順序を定義する。
 LINE account linkと短期link sessionのDB基盤、RLS、明示Grant、本人向け安全な状態RPCは
@@ -457,9 +457,12 @@ queue書込、Push、email副作用、異常終了0で確認した。GAS互換we
 同日、native schedule欠落時にSupabase watchdogが13:12と14:02 JSTの2回、各1回だけfallback
 runを生成し、いずれもrun本体とPages deployが成功した。直近run後もLINE/email候補・送信、
 LINE active queue、retry・失敗は0、使用量は21/180である。全会員開放前のGo/No-Go snapshotと
-fail-closedな切替・限定βへのrollback手順はrunbookへ追記済みである。
-`LINE_NOTIFICATION_ALLOW_ALL`は別の明示承認まで`false`を維持し、全会員向けproduction acceptanceは
-未完了である。
+fail-closedな切替・限定βへのrollback手順はrunbookへ追記済みである。所有者の明示承認後、
+15:30〜15:42 JSTにwatchdogを含む自動経路を停止して全会員単一モードへ同期し、shadow、live
+enqueue、dispatch-onlyを順に実行した。候補・queue・送信・retry・失敗・email副作用0、使用量
+21/180、Pages成功を確認し、`LINE_NOTIFICATION_USE_ALLOWLIST=false`、
+`LINE_NOTIFICATION_ALLOW_ALL=true`で通常scheduleとwatchdogを復帰した。復帰後の実Cronも
+`fresh`、active run 0、追加dispatch 0であり、全会員向けproduction acceptanceは完了した。
 
 ### 目的
 

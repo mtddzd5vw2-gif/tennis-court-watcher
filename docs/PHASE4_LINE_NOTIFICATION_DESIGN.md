@@ -5,7 +5,7 @@
 本書はPhase 4の採用方式と実装順序を定める。
 実装開始条件は[Launch Readiness Review](./LAUNCH_READINESS_REVIEW.md)を参照する。
 Launch Readiness Gateは完了しており、本書の順序で実装を開始する。
-本番LINE配信はfeature flag、shadow enqueue、単一会員、限定βの順に有効化する。
+本番LINE配信はfeature flag、shadow enqueue、単一会員、限定β、全会員の順に有効化した。
 
 2026-08-21に最初の前方migrationとして、`notification_channel`の`line`追加、
 `line_account_links`、`line_link_sessions`、本人向け安全な連携状態RPCを実装した。
@@ -41,6 +41,9 @@ LINE queue書込、Push、email副作用、異常終了は0だった。
 enqueue、worker claim、送信直前authorizationの3境界が同じリストを再確認する。単一canary、
 限定β、全会員は相互排他的なモードとし、空リスト、20件超、複数モード同時指定をfail closedする。
 2026-08-28に1会員のallowlistで固定テスト1通の実機受信後、限定βを開始した。
+同日の所有者による別の明示承認後、watchdogを含む自動経路を一時停止し、全会員単一モードで
+shadow、live enqueue、dispatch-onlyを順に確認した。候補・queue・送信・retry・失敗0、使用量
+21/180、Pages成功を確認し、通常scheduleとwatchdogを復帰して全会員向け本番運転を開始した。
 導入順と停止手順は[LINE Notification Rollout](./PHASE4_LINE_NOTIFICATION_ROLLOUT.md)を正とする。
 
 ## 2. 採用方式
@@ -196,9 +199,9 @@ LINE display name、profile image、status message、email addressは取得し�
 6. 月間使用量の週次報告と180通警告を有効化する。— 完了
 7. `line` channelのqueue、worker、retry、重複防止、180通送信guardを実装する。— 実装・単一会員本番canary完了
 8. dry-runと架空利用者によるcross-user isolationを検証する。— shadow no-write、cross-user、channel分離を隔離環境で確認済み
-9. 管理者を含むβ会員を同じ基盤で連携する。— 最大20会員allowlistを本番反映し、1会員限定βを開始
-10. feature flagでshadow enqueue、単一会員、限定βの順に有効化する。— 約20時間shadow、単一会員canary、1会員限定βまで完了
-11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。— 単一会員deliveryと即時停止を確認、限定βacceptanceを継続中
+9. 管理者を含むβ会員を同じ基盤で連携する。— 最大20会員allowlistを本番反映し、1会員限定βを完了
+10. feature flagでshadow enqueue、単一会員、限定β、全会員の順に有効化する。— 全段階完了
+11. delivery、block、解除、退会、上限到達、rollbackをproduction acceptanceする。— 単一会員実機受信、限定β、全会員向け段階有効化まで完了
 
 ## 9. 完了条件
 
