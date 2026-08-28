@@ -223,6 +223,21 @@ gh variable set ENABLE_USER_LINE_DISPATCH --body "false"
 Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=true`を設定し、その後でGitHubの
 `ENABLE_USER_LINE_DISPATCH=true`を設定する。1回だけworkerを実行し、次を確認する。
 
+既存queueだけを送る手動確認では、通常のavailability更新workflowをlive modeで流さず、
+副作用を限定したdispatch-only modeを使用する。
+
+```powershell
+gh workflow run update-availability.yml `
+  --ref main `
+  -f dry_run=false `
+  -f line_shadow_only=false `
+  -f line_dispatch_only=true
+```
+
+`line_dispatch_only=true`はスクレイピング、テスト、email enqueue/dispatch、LINE enqueue、
+Artifact、availability commit、Pages deployをすべて抑止する。`dry_run=true`または
+`line_shadow_only=true`との同時指定はfail closedする。
+
 安全な実空き候補がない場合は、service-roleの
 `enqueue_line_canary_test(canary_user_id, message_id)`を1回だけ実行する。
 `message_id`はoperatorが生成したUUIDを保持し、同じoperationでは必ず再利用する。

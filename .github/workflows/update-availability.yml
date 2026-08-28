@@ -1,5 +1,5 @@
 name: Update tennis availability
-run-name: Update tennis availability [${{ github.event_name == 'schedule' && 'scheduled-live' || inputs.line_shadow_only && 'manual-line-shadow' || inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]
+run-name: Update tennis availability [${{ github.event_name == 'schedule' && 'scheduled-live' || inputs.line_dispatch_only && 'manual-line-dispatch' || inputs.line_shadow_only && 'manual-line-shadow' || inputs.dry_run && 'manual-dry-run' || 'manual-live' }}]
 
 on:
   workflow_dispatch:
@@ -10,6 +10,10 @@ on:
         default: true
       line_shadow_only:
         description: Evaluate LINE candidates in forced shadow mode without delivery or repository writes
+        type: boolean
+        default: false
+      line_dispatch_only:
+        description: Dispatch existing LINE queue only; skip scraping, email, enqueue, artifacts, and repository writes
         type: boolean
         default: false
   schedule:
@@ -38,13 +42,22 @@ jobs:
     env:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
       LINE_SHADOW_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.line_shadow_only || false }}
+      LINE_DISPATCH_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.line_dispatch_only || false }}
 
     steps:
       - name: Determine execution mode
         id: execution-mode
         shell: bash
         run: |
-          if [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then
+          if [[ "${LINE_DISPATCH_ONLY}" == "true" ]] &&
+             [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then
+            echo "::error::LINE dispatch-only requires dry_run=false and line_shadow_only=false."
+            exit 1
+          fi
+
+          if [[ "${DRY_RUN}" == "true" ||
+                "${LINE_SHADOW_ONLY}" == "true" ||
+                "${LINE_DISPATCH_ONLY}" == "true" ]]; then
             echo "deploy_pages=false" >> "${GITHUB_OUTPUT}"
           else
             echo "deploy_pages=true" >> "${GITHUB_OUTPUT}"
@@ -56,7 +69,9 @@ jobs:
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
             echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
-          elif [[ "${DRY_RUN}" == "true" || "${LINE_SHADOW_ONLY}" == "true" ]]; then
+          elif [[ "${DRY_RUN}" == "true" ||
+                  "${LINE_SHADOW_ONLY}" == "true" ||
+                  "${LINE_DISPATCH_ONLY}" == "true" ]]; then
             echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
           else
             echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
@@ -79,18 +94,23 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        if: env.LINE_DISPATCH_ONLY != 'true'
         run: |
           python -m pip install --requirement requirements.txt
           python -m playwright install --with-deps chromium
 
       - name: Run tests
+        if: env.LINE_DISPATCH_ONLY != 'true'
         run: python -m pytest
 
       - name: Update availability
+        if: env.LINE_DISPATCH_ONLY != 'true'
         run: python scripts/scrape.py
 
       - name: Match notification rules
-        if: vars.ENABLE_NOTIFICATION_MATCHING == 'true'
+        if: >-
+          env.LINE_DISPATCH_ONLY != 'true' &&
+          vars.ENABLE_NOTIFICATION_MATCHING == 'true'
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
@@ -101,6 +121,7 @@ jobs:
 
       - name: Enqueue user email notifications
         if: >-
+          env.LINE_DISPATCH_ONLY != 'true' &&
           vars.ENABLE_NOTIFICATION_MATCHING == 'true' &&
           vars.ENABLE_USER_EMAIL_ENQUEUE == 'true' &&
           env.LINE_SHADOW_ONLY != 'true' &&
@@ -115,6 +136,7 @@ jobs:
 
       - name: Dispatch user email notifications
         if: >-
+          env.LINE_DISPATCH_ONLY != 'true' &&
           vars.ENABLE_USER_EMAIL_DISPATCH == 'true' &&
           env.LINE_SHADOW_ONLY != 'true' &&
           env.DRY_RUN != 'true'
@@ -126,6 +148,7 @@ jobs:
 
       - name: Enqueue user LINE notifications
         if: >-
+          env.LINE_DISPATCH_ONLY != 'true' &&
           vars.ENABLE_NOTIFICATION_MATCHING == 'true' &&
           vars.ENABLE_USER_LINE_ENQUEUE == 'true' &&
           (env.DRY_RUN != 'true' || env.LINE_SHADOW_ONLY == 'true')
@@ -154,7 +177,7 @@ jobs:
         run: python scripts/dispatch_line_notifications.py
 
       - name: Upload run data and reservation page snapshots
-        if: always()
+        if: always() && env.LINE_DISPATCH_ONLY != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: reservation-page-snapshots
@@ -170,7 +193,10 @@ jobs:
           retention-days: 7
 
       - name: Commit changed availability
-        if: env.DRY_RUN != 'true' && env.LINE_SHADOW_ONLY != 'true'
+        if: >-
+          env.DRY_RUN != 'true' &&
+          env.LINE_SHADOW_ONLY != 'true' &&
+          env.LINE_DISPATCH_ONLY != 'true'
         shell: bash
         run: |
           if git diff --quiet -- data/availability.json; then

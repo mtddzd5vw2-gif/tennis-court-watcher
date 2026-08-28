@@ -187,5 +187,7 @@ def test_native_workflow_schedule_concurrency_and_source_logic_are_unchanged() -
     )
     assert steps["Update availability"]["run"] == "python scripts/scrape.py"
     assert steps["Commit changed availability"]["if"] == (
-        "env.DRY_RUN != 'true' && env.LINE_SHADOW_ONLY != 'true'"
+        "env.DRY_RUN != 'true' && "
+        "env.LINE_SHADOW_ONLY != 'true' && "
+        "env.LINE_DISPATCH_ONLY != 'true'"
     )
