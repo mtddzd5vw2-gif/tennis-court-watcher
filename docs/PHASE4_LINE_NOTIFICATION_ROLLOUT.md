@@ -26,6 +26,9 @@
 - 同じRPCの一時cron smokeが3回連続で成功することを確認し、一時jobを削除
 - Actions run `33036338712`でshadow-onlyを実行し、1 rule・12 slotsを評価、候補0、
   LINE/email queue変化0、Push 0、commit/Pages deploy 0を確認
+- Actions run `33138682066`で1会員限定βのmanual-liveを実行し、1 rule・10 slotsを評価、
+  候補0、LINE/email enqueue 0、dispatch 0、retry・失敗0、使用量21/180、
+  availability変更なし、Pages deploy成功を確認
 
 既存GASの実メッセージ応答確認は、用途上の重要度が低いという所有者判断により
 2026-08-27に省略した。PR #68のbridge切替後、約20時間のshadow観測ではqueue書込、Push、
@@ -33,6 +36,12 @@ email副作用、異常終了は0だった。2026-08-28にPR #69のprivate allow
 1会員を登録した。shadow no-write、固定テスト1通の`accepted`と実機受信、使用量20→21、
 retry・失敗・email副作用0を確認した。PR #70のdispatch-only modeによる空queue no-op後、
 `USE_ALLOWLIST=true`、`ALLOW_ALL=false`の1会員限定βを開始した。全会員向けdeliveryは未開始である。
+
+同日、GitHub native scheduleが複数枠でrunを生成しなかった際、2026-08-26に作成された古い
+`queued` run `32984358881`がGitHub APIに残留し、Supabase watchdogが継続的に
+`active_run_present`と判定してfallbackを抑止していたことを確認した。watchdogのactive判定を
+作成から45分未満のrunに限定し、workflow timeoutを十分超えたghost runがfallbackを恒久停止
+しないよう修正した。
 
 ## 2. 変更しない境界
 

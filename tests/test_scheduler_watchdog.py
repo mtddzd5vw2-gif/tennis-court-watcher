@@ -128,6 +128,7 @@ def test_rpc_security_and_state_access_are_service_only() -> None:
 def test_edge_function_auth_mode_deadline_and_dispatch_contract() -> None:
     index = (FUNCTION_DIR / "index.ts").read_text(encoding="utf-8")
     github = (FUNCTION_DIR / "github.ts").read_text(encoding="utf-8")
+    helpers = (FUNCTION_DIR / "helpers.ts").read_text(encoding="utf-8")
     watchdog = (FUNCTION_DIR / "watchdog.ts").read_text(encoding="utf-8")
 
     assert 'request.method !== "POST"' in index
@@ -147,6 +148,8 @@ def test_edge_function_auth_mode_deadline_and_dispatch_contract() -> None:
     assert 'ref: "main"' in github
     assert "inputs: { dry_run: false }" in github
     assert "GET_ATTEMPTS = 2" in github
+    assert "const activeCutoff = observedAt.getTime() - STALE_AFTER_MS" in helpers
+    assert "Date.parse(run.createdAt) > activeCutoff" in helpers
     assert "Exactly one POST is made" in watchdog
     assert "dependencies.dispatch()" in watchdog
 
