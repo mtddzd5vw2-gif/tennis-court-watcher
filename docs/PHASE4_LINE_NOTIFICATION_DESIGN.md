@@ -37,7 +37,7 @@ pass-through bridgeを介する構成へ切替済みである。2026-08-28まで
 LINE queue書込、Push、email副作用、異常終了は0だった。
 
 限定β向けには、一般APIへ公開しない`private.line_notification_beta_allowlist`へUUIDだけを
-最大20件保持する前方migrationを追加する。リスト置換はservice-role専用のbounded RPCへ集約し、
+最大20件保持する前方migrationを追加する。リスト置換はData APIへ公開しないprivate管理関数へ集約し、
 enqueue、worker claim、送信直前authorizationの3境界が同じリストを再確認する。単一canary、
 限定β、全会員は相互排他的なモードとし、空リスト、20件超、複数モード同時指定をfail closedする。
 導入順と停止手順は[LINE Notification Rollout](./PHASE4_LINE_NOTIFICATION_ROLLOUT.md)を正とする。
@@ -145,7 +145,8 @@ LINE user IDは個人情報に準じ、GitHub、Actions log、Artifact、公開P
 - LINE user IDを返す一般会員向けviewやRPCを作らない。
 - service-role専用RPCは`PUBLIC`、`anon`、`authenticated`からexecuteを剥奪する。
 - `SECURITY DEFINER`を一般的な権限エラー回避に使用しない。private allowlistの書込だけは、
-  20件上限、active会員検証、同時lease拒否、空のsearch pathを持つservice-role専用RPCへ閉じる。
+  20件上限、active会員検証、同時lease拒否、空のsearch pathを持ち、信頼済みDB管理者だけが
+  実行できるprivate関数へ閉じる。`service_role`を含むアプリケーションroleには実行を許可しない。
 - private allowlist tableはRLSを強制し、service-roleへSELECTだけを許可して直接書込を許可しない。
 - migration適用後にSupabase security/performance advisorを実行する。
 

@@ -25,7 +25,7 @@ from public, anon, authenticated, service_role;
 grant select on table private.line_notification_beta_allowlist
 to service_role;
 
-create function public.replace_line_notification_beta_allowlist(
+create function private.replace_line_notification_beta_allowlist(
   p_user_ids uuid[]
 )
 returns table (
@@ -979,10 +979,8 @@ begin
 end;
 $$;
 
-revoke all on function public.replace_line_notification_beta_allowlist(uuid[])
+revoke all on function private.replace_line_notification_beta_allowlist(uuid[])
 from public, anon, authenticated, service_role;
-grant execute on function public.replace_line_notification_beta_allowlist(uuid[])
-to service_role;
 
 revoke all on function public.enqueue_line_notification_candidates(
   jsonb,
@@ -1059,8 +1057,8 @@ comment on schema private is
   'Server-only objects that must not be exposed through the Data API.';
 comment on table private.line_notification_beta_allowlist is
   'At most 20 Supabase Auth users approved for the limited LINE beta.';
-comment on function public.replace_line_notification_beta_allowlist(uuid[]) is
-  'Atomically replaces the capped LINE beta allowlist and cancels removed unsent work.';
+comment on function private.replace_line_notification_beta_allowlist(uuid[]) is
+  'Trusted database-operator function that atomically replaces the capped LINE beta allowlist and cancels removed unsent work.';
 comment on function public.enqueue_line_notification_candidates(
   jsonb,
   boolean,

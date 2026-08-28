@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(61);
+select extensions.plan(62);
 
 insert into auth.users (id)
 values
@@ -424,7 +424,7 @@ values (
 
 create temporary table line_beta_allowlist_replace as
 select *
-from public.replace_line_notification_beta_allowlist(array[
+from private.replace_line_notification_beta_allowlist(array[
   '10000000-0000-4000-8000-000000000011'::uuid,
   '10000000-0000-4000-8000-000000000012'::uuid
 ]);
@@ -453,7 +453,7 @@ select extensions.is(
 select extensions.throws_ok(
   $$
     select *
-    from public.replace_line_notification_beta_allowlist(
+    from private.replace_line_notification_beta_allowlist(
       array(
         select pg_catalog.gen_random_uuid()
         from pg_catalog.generate_series(1, 21)
@@ -688,7 +688,16 @@ select extensions.ok(
     'private.line_notification_beta_allowlist',
     'INSERT'
   ),
-  'service role cannot bypass the bounded replacement RPC'
+  'service role cannot bypass the trusted database-operator boundary'
+);
+
+select extensions.ok(
+  not has_function_privilege(
+    'service_role',
+    'private.replace_line_notification_beta_allowlist(uuid[])',
+    'EXECUTE'
+  ),
+  'service role cannot execute the private allowlist replacement function'
 );
 
 select extensions.ok(

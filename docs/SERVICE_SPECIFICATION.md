@@ -346,7 +346,7 @@ Phase 3.4.2でscheduled production runによる自動メール配信を確認済
 - 重複防止の正は`unique (user_id, channel, slot_id)`とし、emailとLINEを別channelとして保持する。
 - email workerとLINE workerは明示的なchannel条件と別credentialを持ち、互いのmessageをclaimしない。
 - LINE enqueueは初期OFFかつshadowを既定とする。live enqueueは単一会員canary、最大20会員のprivate server-side allowlist、明示的な全会員許可のいずれか1モードだけを許可する。空allowlist、上限超過、複数モード同時指定はfail closedする。
-- 限定βallowlistはSupabase Auth UUIDだけを保持し、一般Data APIへ公開しない。enqueue、LINE worker claim、送信直前authorizationで同じallowlistを再確認し、service-roleもbounded置換RPC以外から書き込めない。
+- 限定βallowlistはSupabase Auth UUIDだけを保持し、一般Data APIへ公開しない。enqueue、LINE worker claim、送信直前authorizationで同じallowlistを再確認する。置換は信頼済みDB管理者だけが実行できるprivate関数に限定し、service-roleを含むアプリケーションroleからは直接書込も関数実行もできない。
 - Messaging API webhookはraw bodyのHMAC-SHA256署名をJSON parse前に検証し、event IDで重複を排除する。保存対象はevent ID、event種別、発生時刻だけとし、LINE user IDやraw payloadをledgerへ保存しない。
 - Push送信では内部message UUIDを最初の試行からretry keyとして固定し、同じrecipientとpayloadの再送だけを許可する。providerの5xx・timeoutだけをbounded retryし、client error・無効token・上限到達は再送しない。
 - LINE tokenはEdge Function secretに留め、GitHub availability workflowへ渡さない。workflowのdispatch stepは高entropyな専用worker secretだけを持つ。

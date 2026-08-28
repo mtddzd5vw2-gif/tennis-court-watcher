@@ -241,12 +241,14 @@ Supabaseの`ENABLE_USER_LINE_NOTIFICATIONS=true`を設定し、その後でGitHu
 
 allowlist migration、Edge Function、workflowをmainへ統合して本番反映した後にだけ開始する。
 切替中はenqueue、dispatch、Edge Function最終gateをすべて停止し、5分のlease失効後に
-`active_processing_count=0`を確認する。次にservice-role限定RPCへ1〜20件のSupabase Auth UUIDを
-配列で渡す。RPCはリストを原子的に置換し、外れた会員の未送信backlogを取消す。
+`active_processing_count=0`を確認する。次にSupabase SQL Editorまたは同等の信頼済みDB管理経路から、
+private管理関数へ1〜20件のSupabase Auth UUIDを配列で渡す。この関数はData APIの
+`service_role`を含むアプリケーションroleから実行できない。リストを原子的に置換し、
+外れた会員の未送信backlogを取消す。
 
 ```sql
 select *
-from public.replace_line_notification_beta_allowlist(
+from private.replace_line_notification_beta_allowlist(
   array[
     '<beta-member-auth-uuid-1>'::uuid,
     '<beta-member-auth-uuid-2>'::uuid
@@ -282,7 +284,8 @@ select * from public.cancel_line_notification_backlog();
 このRPCは未送信の`pending`/`retry`とlease失効済み`processing`だけを取消し、
 送信受理済み履歴とemail channelを変更しない。`active_processing_count`が0でない場合は
 再実行せず、残るleaseが失効してからもう一度確認する。
-限定βを終了する場合は、その後に`replace_line_notification_beta_allowlist(array[]::uuid[])`で
+限定βを終了する場合は、その後に信頼済みDB管理経路から
+`private.replace_line_notification_beta_allowlist(array[]::uuid[])`で
 allowlistを空にし、GitHubとSupabaseの`LINE_NOTIFICATION_USE_ALLOWLIST=false`へ戻す。
 
 webhookはblock/unfollow状態を安全に保つため、Push停止時も原則として維持する。

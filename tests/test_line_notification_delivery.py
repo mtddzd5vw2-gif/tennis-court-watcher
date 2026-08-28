@@ -30,9 +30,13 @@ def compact(value: str) -> str:
     return " ".join(re.sub(r"--.*?$", "", value, flags=re.MULTILINE).split())
 
 
-def function_definition(name: str, migration: Path = MIGRATION) -> str:
+def function_definition(
+    name: str,
+    migration: Path = MIGRATION,
+    schema: str = "public",
+) -> str:
     match = re.search(
-        rf"create(?: or replace)? function public\.{re.escape(name)}\b"
+        rf"create(?: or replace)? function {re.escape(schema)}\.{re.escape(name)}\b"
         rf".*?\$\$;(?:\s|$)",
         read(migration).lower(),
         flags=re.DOTALL,
@@ -60,7 +64,7 @@ def test_line_delivery_is_one_forward_migration_and_parses() -> None:
     assert changed_existing == []
 
 
-def test_beta_allowlist_is_private_capped_and_service_role_managed() -> None:
+def test_beta_allowlist_is_private_capped_and_operator_managed() -> None:
     sql = compact(read(BETA_MIGRATION).lower())
     assert "create schema if not exists private" in sql
     assert "create table private.line_notification_beta_allowlist" in sql
@@ -70,10 +74,21 @@ def test_beta_allowlist_is_private_capped_and_service_role_managed() -> None:
     assert "force row level security" in sql
     assert "v_max_allowlisted_members constant pg_catalog.int4 := 20" in sql
     assert "security definer set search_path = ''" in function_definition(
-        "replace_line_notification_beta_allowlist", BETA_MIGRATION
+        "replace_line_notification_beta_allowlist",
+        BETA_MIGRATION,
+        schema="private",
     )
-    assert "grant select on table private.line_notification_beta_allowlist to service_role" in sql
-    assert "grant execute on function public.replace_line_notification_beta_allowlist(uuid[]) to service_role" in sql
+    assert (
+        "grant select on table private.line_notification_beta_allowlist to service_role"
+        in sql
+    )
+    assert (
+        "revoke all on function "
+        "private.replace_line_notification_beta_allowlist(uuid[]) "
+        "from public, anon, authenticated, service_role"
+        in sql
+    )
+    assert "grant execute on function private.replace_line_notification_beta_allowlist" not in sql
     assert "grant insert on table private.line_notification_beta_allowlist" not in sql
 
 
@@ -286,5 +301,5 @@ def test_line_edge_function_unit_tests_are_present() -> None:
     assert (WEBHOOK / "helpers_test.ts").is_file()
     assert (WORKER / "helpers_test.ts").is_file()
     assert PGTAP.is_file()
-    assert "select extensions.plan(61);" in read(PGTAP)
+    assert "select extensions.plan(62);" in read(PGTAP)
     parse_sql(read(PGTAP))
