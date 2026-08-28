@@ -120,6 +120,18 @@ test("an active main dry-run blocks fallback collision", () => {
   assert.equal(snapshot.activeRunCount, 1);
 });
 
+test("an active run at least 45 minutes old does not block fallback", () => {
+  const snapshot = classifyWorkflowRuns([
+    run({
+      status: "queued",
+      conclusion: null,
+      createdAt: new Date(NOW.getTime() - STALE_AFTER_MS).toISOString(),
+    }),
+  ], NOW);
+  assert.equal(snapshot.outcome, "stale");
+  assert.equal(snapshot.activeRunCount, 0);
+});
+
 test("exactly 45 minutes old is stale", () => {
   const snapshot = classifyWorkflowRuns([
     run({

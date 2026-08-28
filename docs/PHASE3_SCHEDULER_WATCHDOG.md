@@ -16,7 +16,7 @@ Liveness に数える run は次のいずれかである。
 - `event=workflow_dispatch` かつ run-name に `[manual-live]` がある
 - 前回 watchdog dispatch の response から取得・保存できた workflow run ID と一致する
 
-`manual-dry-run` と feature branch run は liveness に数えない。一方、`main` の `queued`、`in_progress`、`requested`、`waiting`、`pending` は dry-run を含めて active run とし、fallback との競合を止める。
+`manual-dry-run` と feature branch run は liveness に数えない。一方、`main` の `queued`、`in_progress`、`requested`、`waiting`、`pending` は dry-run を含め、作成から45分未満の間だけ active run としてfallbackとの競合を止める。45分以上古いactive表示は、GitHub APIに残留したghost runがwatchdogを恒久停止させないようactive判定から除外する。qualifying live runであれば古い`created_at`自体は保持されるため、snapshotは`stale`となり、通常の二重観測・claim・cooldownを経てfallback対象になる。
 
 GitHub API は `branch=main&exclude_pull_requests=true&per_page=100` で新しい順に取得し、45分 window の末端までページングする。qualifying live runが1件もない状態、response 不正、未知status、許容2分を超える未来の `created_at`、順序不正、重複、ページ間の `total_count` 変化、最大10ページで window を覆えない状態、GET failure はすべて `unknown` として fail closed にする。GET だけは1回の短い retry/backoff を許可し、workflow dispatch POST は retry しない。
 
@@ -155,6 +155,7 @@ where jobname = 'update-availability-watchdog';
 ## 残る運用リスク
 
 - GitHub Actions の native schedule 自体が45分以上遅延すると fallback が起動する。これは watchdog の目的どおりだが、GitHub 側で run が同時生成された場合は second snapshot と既存 concurrency が最終的な競合抑止になる。
+- GitHub APIがworkflow timeout（20分）を超えてactive statusを残す場合でも、作成から45分未満だけ競合抑止に使う。45分以上残留したghost runはfallbackを止めない。
 - GitHub API 障害、rate limit、不正 response、45分 window を10ページで覆えない高頻度状態では fail closed になるため、fallback availability より重複防止を優先する。
 - GitHub API version `2026-03-10` の workflow dispatch は、HTTP 200のJSON objectにpositive safe integerの `workflow_run_id` がある場合だけacceptedとして扱う。body不正、ID欠落・不正、204を含むunexpected 2xx、timeout、5xxは結果不明として30分cooldownを維持する。
 - PAT の失効・権限変更は dispatch failure になる。expiry と rotation を別途運用監視する。

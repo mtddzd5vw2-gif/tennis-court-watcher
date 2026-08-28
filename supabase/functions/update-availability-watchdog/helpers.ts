@@ -85,8 +85,10 @@ export function classifyWorkflowRuns(
   observedAt: Date,
   watchdogRunId: number | null = null,
 ): Snapshot {
+  const activeCutoff = observedAt.getTime() - STALE_AFTER_MS;
   const activeRuns = runs.filter((run) =>
-    run.headBranch === "main" && ACTIVE_RUN_STATUSES.has(run.status)
+    run.headBranch === "main" && ACTIVE_RUN_STATUSES.has(run.status) &&
+    Date.parse(run.createdAt) > activeCutoff
   );
   const liveRuns = runs
     .filter((run) => isQualifyingLiveRun(run, watchdogRunId))
