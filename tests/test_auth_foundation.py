@@ -585,6 +585,8 @@ def test_account_line_link_ui_exposes_only_safe_status_and_confirmed_actions() -
     assert account.find(attrs={"data-line-unlink-confirm": True})
     assert account.find(attrs={"data-line-unlink-cancel": True})
     assert account.find("script", src="../assets/js/line-account-link.js")
+    assert "配信中" in account.get_text(" ", strip=True)
+    assert "準備中" not in account.get_text(" ", strip=True)
 
     assert 'client.rpc("get_my_line_link_status")' in script
     assert '"start-line-account-link"' in script
@@ -599,6 +601,8 @@ def test_account_line_link_ui_exposes_only_safe_status_and_confirmed_actions() -
     assert "localStorage" not in script
     assert "console." not in script
     assert "fetch(" not in script
+    assert "準備が整い次第" not in script
+    assert "有効な通知条件に一致する空き" in script
 
 
 def test_legal_pages_are_formal_and_publish_operator_contact() -> None:
