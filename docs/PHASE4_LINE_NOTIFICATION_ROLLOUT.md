@@ -41,7 +41,9 @@ retry・失敗・email副作用0を確認した。PR #70のdispatch-only modeに
 `queued` run `32984358881`がGitHub APIに残留し、Supabase watchdogが継続的に
 `active_run_present`と判定してfallbackを抑止していたことを確認した。watchdogのactive判定を
 作成から45分未満のrunに限定し、workflow timeoutを十分超えたghost runがfallbackを恒久停止
-しないよう修正した。
+しないよう修正した。Edge Function version 37を本番deploy後、13:12 JSTの実Cronが
+`dispatch_accepted`でfallback run `33141122234`を生成し、run本体とPages deployの成功、
+LINE/email候補・送信0、retry・失敗・allowlist外queue 0、使用量21/180を確認した。
 
 ## 2. 変更しない境界
 
