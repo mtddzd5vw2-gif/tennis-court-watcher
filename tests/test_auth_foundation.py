@@ -371,6 +371,29 @@ def auth_page_loader(browser: Browser):
         page.add_init_script(
             script=f"""
               window.__mockAuth = {json.dumps(mock or {})};
+              window.__anonymousFunnelCalls = [];
+              const originalFetch = window.fetch.bind(window);
+              window.fetch = (input, init = {{}}) => {{
+                const url = String(input);
+                if (
+                  url.endsWith(
+                    "/functions/v1/record-anonymous-funnel-event"
+                  )
+                ) {{
+                  window.__anonymousFunnelCalls.push({{
+                    url,
+                    method: init.method,
+                    headers: init.headers,
+                    body: JSON.parse(init.body),
+                    cache: init.cache,
+                    credentials: init.credentials,
+                    keepalive: init.keepalive,
+                    mode: init.mode,
+                    referrerPolicy: init.referrerPolicy,
+                  }});
+                }}
+                return originalFetch(input, init);
+              }};
               if (
                 window.__mockAuth.pendingTerms &&
                 !window.sessionStorage.getItem("mock-pending-initialized")
@@ -398,6 +421,21 @@ def auth_page_loader(browser: Browser):
                     status=200,
                     content_type="application/javascript",
                     body=MOCK_SUPABASE_SDK,
+                )
+                return
+
+            if (
+                parsed.netloc == "project.example.supabase.co"
+                and parsed.path
+                == "/functions/v1/record-anonymous-funnel-event"
+            ):
+                route.fulfill(
+                    status=204,
+                    headers={
+                        "access-control-allow-origin": "http://pages.test",
+                        "cache-control": "no-store",
+                    },
+                    body="",
                 )
                 return
 
@@ -592,11 +630,22 @@ def test_auth_script_uses_pkce_and_does_not_log_credentials() -> None:
     assert "exchangeCodeForSession" in script
     assert "getSession" in script
     assert 'signOut({ scope: "local" })' in script
-    assert "localStorage" not in script
+    local_storage_lines = [
+        line.strip() for line in script.splitlines() if "localStorage" in line
+    ]
+    assert local_storage_lines == [
+        'if (window.localStorage.getItem(storageKey) === "1") {',
+        'window.localStorage.setItem(storageKey, "1");',
+        "window.localStorage.removeItem(storageKey);",
+    ]
     assert "access_token" not in script.lower()
     assert "refresh_token" not in script.lower()
     assert "console." not in script
-    assert "fetch(" not in script
+    funnel_helper = script.split(
+        "function recordAnonymousFunnelEvent", 1
+    )[1].split("function enableLoginForm", 1)[0]
+    assert "window.fetch(endpoint" in funnel_helper
+    assert "fetch(" not in script.replace("window.fetch(endpoint", "")
 
 
 def test_member_pages_hide_internal_status_and_development_language() -> None:
@@ -670,8 +719,6 @@ def test_legal_pages_are_formal_and_publish_operator_contact() -> None:
 
     for page in (terms, privacy):
         text = page.get_text(" ", strip=True)
-        assert "版番号: 2026-08-28" in text
-        assert "発効日: 2026-08-28" in text
         assert "グランドスラム（鹿児島市内テニスサークル）" in text
         assert "wakahisamk [at] gmail [dot] com" in text
         assert "wakahisamk@gmail.com" not in read(
@@ -679,6 +726,11 @@ def test_legal_pages_are_formal_and_publish_operator_contact() -> None:
         )
         assert "暫定案" not in text
         assert "一般公開前" not in text
+
+    assert "版番号: 2026-08-28" in terms.get_text(" ", strip=True)
+    assert "発効日: 2026-08-28" in terms.get_text(" ", strip=True)
+    assert "版番号: 2026-09-01" in privacy.get_text(" ", strip=True)
+    assert "発効日: 2026-09-01" in privacy.get_text(" ", strip=True)
 
     terms_text = terms.get_text(" ", strip=True)
     assert "本サービスは現在無料です" in terms_text
@@ -1274,6 +1326,53 @@ def test_line_login_is_primary_and_uses_custom_provider(auth_page_loader) -> Non
     assert page.evaluate(
         'window.sessionStorage.getItem("tcw.pendingTermsAcceptance")'
     ) is None
+    assert messages == []
+
+
+def test_login_funnel_counts_page_and_line_click_once_per_jst_day(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader("auth/login.html")
+    page.wait_for_function("window.__anonymousFunnelCalls.length === 1")
+
+    page.locator("[data-line-auth-start]").click()
+    page.wait_for_function("window.__anonymousFunnelCalls.length === 2")
+
+    calls = page.evaluate("window.__anonymousFunnelCalls")
+    assert [call["body"] for call in calls] == [
+        {"event_name": "login_page_view"},
+        {"event_name": "line_start_click"},
+    ]
+    for call in calls:
+        assert call == {
+            "url": (
+                "https://project.example.supabase.co/functions/v1/"
+                "record-anonymous-funnel-event"
+            ),
+            "method": "POST",
+            "headers": {"content-type": "text/plain;charset=UTF-8"},
+            "body": call["body"],
+            "cache": "no-store",
+            "credentials": "omit",
+            "keepalive": True,
+            "mode": "cors",
+            "referrerPolicy": "no-referrer",
+        }
+
+    markers = page.evaluate(
+        """Object.fromEntries(
+          Object.entries(localStorage).filter(([key]) =>
+            key.startsWith("tcw.anonymousFunnel.")
+          )
+        )"""
+    )
+    assert len(markers) == 2
+    assert all(value == "1" for value in markers.values())
+    assert "member" not in json.dumps(markers)
+
+    page.reload()
+    page.locator("[data-line-auth-start]:not([disabled])").wait_for()
+    assert page.evaluate("window.__anonymousFunnelCalls") == []
     assert messages == []
 
 
@@ -1873,6 +1972,31 @@ def test_pending_terms_account_requires_explicit_consent_and_refreshes(
     assert "利用規約への同意を登録しました" in page.locator(
         '[data-action-status][data-state="success"]'
     ).inner_text()
+    assert messages == []
+
+
+def test_pending_terms_prompt_is_counted_without_member_data(
+    auth_page_loader,
+) -> None:
+    page, messages = auth_page_loader(
+        "account/index.html",
+        {
+            "sessionEmail": "member@example.test",
+            "profileStatus": "pending_terms",
+            "latestTermsVersion": None,
+            "acceptances": [],
+        },
+    )
+    page.locator("[data-terms-consent-panel]").wait_for(state="visible")
+    page.wait_for_function("window.__anonymousFunnelCalls.length === 1")
+
+    calls = page.evaluate("window.__anonymousFunnelCalls")
+    assert [call["body"] for call in calls] == [
+        {"event_name": "terms_prompt_view"},
+    ]
+    serialized = json.dumps(calls)
+    assert "member@example.test" not in serialized
+    assert "00000000-0000-4000-8000-000000000001" not in serialized
     assert messages == []
 
 

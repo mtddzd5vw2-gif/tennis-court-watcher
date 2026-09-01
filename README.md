@@ -82,7 +82,7 @@ PKCEのcode verifierはリンクを要求したブラウザ側に保存される
 - `legal/terms.html`: 正式な利用規約
 - `legal/privacy.html`: 正式なプライバシーポリシー
 
-法務ページは2026-08-21に正式化し、2026-08-28にLINE主導認証へ対応しました。運営者、問い合わせ窓口、版番号、発効日、取得情報、利用目的、委託先、第三者提供、90日通知データ保持、退会時削除、開示等請求、規約改定時の再同意を確定しています。詳細は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)を参照してください。
+法務ページは2026-08-21に正式化し、2026-08-28にLINE主導認証へ対応しました。2026-09-01には個人を識別しない登録導線の日別集計を明記しました。運営者、問い合わせ窓口、版番号、発効日、取得情報、利用目的、委託先、第三者提供、90日通知データ保持、退会時削除、開示等請求、規約改定時の再同意を確定しています。詳細は[Phase 1 Auth Design](docs/PHASE1_AUTH_DESIGN.md)と[匿名登録ファネル](docs/ANONYMOUS_FUNNEL_METRICS.md)を参照してください。
 
 Phase 2は完了です。`supabase/migrations/20260807000000_create_notification_rules.sql` に鹿児島市3施設のマスター、通知条件・施設・曜日の関連、本人かつactive会員に限定したRLSを定義し、`20260807100000_add_notification_rule_save_rpc.sql` に原子的保存用 `save_notification_rule` RPCを追加しています。`20260807130000_limit_notification_rules_per_user.sql` は、有効・停止中を含む通知条件を1利用者最大5件に制限し、`20260821022637_add_configurable_notification_targets.sql` は祝日選択と監視範囲内の時間帯選択を追加します。DB triggerが最終的な件数強制箇所で、同一利用者の並行作成はtransaction advisory lockを取得してから件数を数えることで直列化します。UIにも「登録済み n / 5件」を表示し、5件では新規追加を無効化します。既存条件の編集・有効化・一時停止・削除は可能で、削除すれば再び追加できます。`scripts/match_notification_rules.py` の空き候補照合エンジンとservice-role専用取得RPCも実装済みです。Phase 3.4.1の自動化基盤、Phase 3.4.2の本番段階有効化とscheduled email確認は完了し、Phase 3.4.3でlegacy管理者LINE経路を退役しました。Phase 4はLINE account linkを本番反映し、利用者別LINE配信の安全な実装を初期OFFで追加しています。match詳細は公開Artifact、Pages、`data/` へ保存しません。リポジトリへのmigration追加だけではSupabase環境へ自動適用されないため、適用状況は環境ごとに確認してください。詳細は[Phase 2 Notification Rules Design](docs/PHASE2_NOTIFICATION_RULES_DESIGN.md)を参照してください。
 

@@ -434,6 +434,12 @@ verify_jwt = false
 [functions.update-availability-watchdog]
 verify_jwt = false
 
+# The public site sends only an allowlisted anonymous event name. The Function
+# enforces the exact production Origin, a tiny body, and no query parameters,
+# then writes one daily aggregate through a service-role-only RPC.
+[functions.record-anonymous-funnel-event]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

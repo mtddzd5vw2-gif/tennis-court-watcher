@@ -7,6 +7,13 @@
   const LINE_AUTH_PROVIDER = "custom:line";
   const PENDING_TERMS_KEY = "tcw.pendingTermsAcceptance";
   const PENDING_DESTINATION_KEY = "tcw.pendingAuthDestination";
+  const FUNNEL_STORAGE_PREFIX = "tcw.anonymousFunnel";
+  const FUNNEL_FUNCTION_NAME = "record-anonymous-funnel-event";
+  const FUNNEL_EVENTS = new Set([
+    "login_page_view",
+    "line_start_click",
+    "terms_prompt_view",
+  ]);
   const LOGIN_SESSION_TIMEOUT_MS = 8000;
   const AUTHENTICATED_REDIRECT_DELAY_MS = 400;
 
@@ -120,6 +127,62 @@
     );
   }
 
+  function currentJstDate() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(
+      parts.map((part) => [part.type, part.value]),
+    );
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function recordAnonymousFunnelEvent(config, eventName) {
+    if (!FUNNEL_EVENTS.has(eventName)) {
+      return;
+    }
+
+    const storageKey = `${FUNNEL_STORAGE_PREFIX}.${currentJstDate()}.${eventName}`;
+    try {
+      if (window.localStorage.getItem(storageKey) === "1") {
+        return;
+      }
+      window.localStorage.setItem(storageKey, "1");
+    } catch {
+      // Counting remains best effort if browser storage is unavailable.
+    }
+
+    const endpoint =
+      `${config.supabaseUrl}/functions/v1/${FUNNEL_FUNCTION_NAME}`;
+    const clearMarker = () => {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // A failed anonymous metric must never block authentication.
+      }
+    };
+
+    void window.fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain;charset=UTF-8",
+      },
+      body: JSON.stringify({ event_name: eventName }),
+      cache: "no-store",
+      credentials: "omit",
+      keepalive: true,
+      mode: "cors",
+      referrerPolicy: "no-referrer",
+    }).then((response) => {
+      if (!response.ok) {
+        clearMarker();
+      }
+    }).catch(clearMarker);
+  }
+
   function enableLoginForm(client, config, form, destination) {
     const emailInput = form.elements.email;
     const submitButton = form.querySelector('button[type="submit"]');
@@ -211,6 +274,7 @@
       starting = true;
       button.disabled = true;
       setStatus(status, "LINEを開いています…");
+      recordAnonymousFunnelEvent(config, "line_start_click");
       clearPendingTermsAcceptance();
       rememberPendingDestination(destination);
 
@@ -271,6 +335,7 @@
         return;
       }
       sessionStatus.hidden = true;
+      recordAnonymousFunnelEvent(config, "login_page_view");
     } catch {
       setStatus(
         sessionStatus,
@@ -331,7 +396,7 @@
     }
   }
 
-  async function setupAccount(client) {
+  async function setupAccount(client, config) {
     const loading = document.querySelector("[data-account-loading]");
     const content = document.querySelector("[data-account-content]");
     const email = document.querySelector("[data-account-email]");
@@ -507,6 +572,9 @@
       const requiresConsent =
         profile.membership_status === "pending_terms" ||
         !hasCurrentAcceptance;
+      if (requiresConsent) {
+        recordAnonymousFunnelEvent(config, "terms_prompt_view");
+      }
       consentPanel.hidden = !requiresConsent;
       consentInput.checked = false;
       consentButton.disabled = true;
@@ -697,7 +765,7 @@
     } else if (page === "auth-callback") {
       await handleCallback(client);
     } else if (page === "account") {
-      await setupAccount(client);
+      await setupAccount(client, config);
     }
   }
 
