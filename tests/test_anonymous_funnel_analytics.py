@@ -14,6 +14,16 @@ MIGRATION = (
     / "supabase/migrations"
     / "20260901070221_add_anonymous_funnel_counts.sql"
 )
+COUNTER_TYPE_FIX_MIGRATION = (
+    ROOT
+    / "supabase/migrations"
+    / "20260901073821_fix_anonymous_funnel_counter_type.sql"
+)
+COUNTER_LEAST_FIX_MIGRATION = (
+    ROOT
+    / "supabase/migrations"
+    / "20260901073954_fix_anonymous_funnel_counter_least_expression.sql"
+)
 FUNCTION = ROOT / "supabase/functions/record-anonymous-funnel-event"
 AUTH_SCRIPT = ROOT / "assets/js/auth-foundation.js"
 PRIVACY = ROOT / "legal/privacy.html"
@@ -87,6 +97,41 @@ def test_increment_rpc_is_service_role_only_bounded_and_atomic() -> None:
         r"\(text\) to (?:anon|authenticated)",
         sql,
     )
+
+
+def test_applied_counter_type_migration_is_preserved_in_history() -> None:
+    sql = compact(read(COUNTER_TYPE_FIX_MIGRATION))
+    parse_sql(read(COUNTER_TYPE_FIX_MIGRATION))
+
+    assert "create or replace function public.record_anonymous_funnel_event" in sql
+    assert "1000000::pg_catalog.int8" in sql
+    assert "notify pgrst, 'reload schema'" in sql
+    assert (
+        "revoke all on function public.record_anonymous_funnel_event(text) "
+        "from public, anon, authenticated, service_role"
+    ) in sql
+    assert (
+        "grant execute on function public.record_anonymous_funnel_event(text) "
+        "to service_role"
+    ) in sql
+
+
+def test_counter_uses_the_least_expression_without_schema_qualification() -> None:
+    sql = compact(read(COUNTER_LEAST_FIX_MIGRATION))
+    parse_sql(read(COUNTER_LEAST_FIX_MIGRATION))
+
+    assert "event_count = least(" in sql
+    assert "1000000::pg_catalog.int8" in sql
+    assert "pg_catalog.least" not in sql
+    assert "notify pgrst, 'reload schema'" in sql
+    assert (
+        "revoke all on function public.record_anonymous_funnel_event(text) "
+        "from public, anon, authenticated, service_role"
+    ) in sql
+    assert (
+        "grant execute on function public.record_anonymous_funnel_event(text) "
+        "to service_role"
+    ) in sql
 
 
 def test_edge_function_has_strict_public_ingress_boundary() -> None:
