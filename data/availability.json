@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-09-12T12:34:12+09:00",
+  "generated_at": "2026-09-12T14:43:54+09:00",
   "window": {
     "days": 15,
     "start": "08:00",
@@ -20,7 +20,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:10+09:00",
+          "checked_at": "2026-09-12T14:42:54+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-12&category_id=483&area_id=289",
           "availability": []
         },
@@ -31,7 +31,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:14+09:00",
+          "checked_at": "2026-09-12T14:42:58+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-13&category_id=483&area_id=289",
           "availability": [
             {
@@ -87,12 +87,12 @@
               "facility_name": "鴨池県営テニスコート",
               "date": "2026-09-13",
               "court_name": "コート７",
-              "start_time": "11:00",
+              "start_time": "08:30",
               "end_time": "13:00",
-              "duration_minutes": 120,
+              "duration_minutes": 270,
               "status": "available",
               "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-13&category_id=483&area_id=289",
-              "slot_id": "483c6eee4dd3d5527005225b"
+              "slot_id": "c347b5cefe4a2f3d746e938c"
             }
           ]
         },
@@ -103,7 +103,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:17+09:00",
+          "checked_at": "2026-09-12T14:43:01+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-19&category_id=483&area_id=289",
           "availability": []
         },
@@ -114,7 +114,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:20+09:00",
+          "checked_at": "2026-09-12T14:43:05+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-20&category_id=483&area_id=289",
           "availability": []
         },
@@ -125,7 +125,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:23+09:00",
+          "checked_at": "2026-09-12T14:43:08+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-21&category_id=483&area_id=289",
           "availability": []
         },
@@ -136,7 +136,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:27+09:00",
+          "checked_at": "2026-09-12T14:43:12+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-22&category_id=483&area_id=289",
           "availability": []
         },
@@ -147,7 +147,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:30+09:00",
+          "checked_at": "2026-09-12T14:43:15+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-23&category_id=483&area_id=289",
           "availability": []
         },
@@ -158,7 +158,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:33+09:00",
+          "checked_at": "2026-09-12T14:43:18+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-26&category_id=483&area_id=289",
           "availability": []
         }
@@ -175,7 +175,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:36+09:00",
+          "checked_at": "2026-09-12T14:43:21+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -186,7 +186,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:39+09:00",
+          "checked_at": "2026-09-12T14:43:24+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -197,7 +197,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:41+09:00",
+          "checked_at": "2026-09-12T14:43:26+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -208,7 +208,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:43+09:00",
+          "checked_at": "2026-09-12T14:43:27+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -219,7 +219,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:45+09:00",
+          "checked_at": "2026-09-12T14:43:29+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -230,7 +230,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:47+09:00",
+          "checked_at": "2026-09-12T14:43:31+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -254,7 +254,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:49+09:00",
+          "checked_at": "2026-09-12T14:43:33+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -290,7 +290,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:51+09:00",
+          "checked_at": "2026-09-12T14:43:34+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
@@ -307,7 +307,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:53+09:00",
+          "checked_at": "2026-09-12T14:43:36+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -318,7 +318,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:55+09:00",
+          "checked_at": "2026-09-12T14:43:38+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -329,7 +329,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:33:57+09:00",
+          "checked_at": "2026-09-12T14:43:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -340,7 +340,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:34:00+09:00",
+          "checked_at": "2026-09-12T14:43:43+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -351,7 +351,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:34:03+09:00",
+          "checked_at": "2026-09-12T14:43:45+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -362,7 +362,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:34:05+09:00",
+          "checked_at": "2026-09-12T14:43:47+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -373,7 +373,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:34:07+09:00",
+          "checked_at": "2026-09-12T14:43:50+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -384,7 +384,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-12T12:34:09+09:00",
+          "checked_at": "2026-09-12T14:43:52+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
