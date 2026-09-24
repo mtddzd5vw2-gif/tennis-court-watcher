@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-09-24T14:18:49+09:00",
+  "generated_at": "2026-09-24T16:53:32+09:00",
   "window": {
     "days": 15,
     "start": "08:00",
@@ -20,7 +20,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:19+09:00",
+          "checked_at": "2026-09-24T16:52:58+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-26&category_id=483&area_id=289",
           "availability": []
         },
@@ -31,7 +31,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:22+09:00",
+          "checked_at": "2026-09-24T16:53:02+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-27&category_id=483&area_id=289",
           "availability": [
             {
@@ -75,12 +75,24 @@
               "facility_name": "鴨池県営テニスコート",
               "date": "2026-09-27",
               "court_name": "コート１０",
-              "start_time": "08:30",
+              "start_time": "11:00",
               "end_time": "13:00",
-              "duration_minutes": 270,
+              "duration_minutes": 120,
               "status": "available",
               "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-27&category_id=483&area_id=289",
-              "slot_id": "075588dc7e4714e19d8fdbe1"
+              "slot_id": "7b3d7f1371de12262d7b6d93"
+            },
+            {
+              "facility_id": "kamoike-prefectural",
+              "facility_name": "鴨池県営テニスコート",
+              "date": "2026-09-27",
+              "court_name": "コート１１",
+              "start_time": "11:00",
+              "end_time": "13:00",
+              "duration_minutes": 120,
+              "status": "available",
+              "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-09-27&category_id=483&area_id=289",
+              "slot_id": "79d4feba62a453cc41c70058"
             },
             {
               "facility_id": "kamoike-prefectural",
@@ -139,7 +151,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:25+09:00",
+          "checked_at": "2026-09-24T16:53:05+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-10-03&category_id=483&area_id=289",
           "availability": []
         },
@@ -150,7 +162,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:29+09:00",
+          "checked_at": "2026-09-24T16:53:09+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-10-04&category_id=483&area_id=289",
           "availability": []
         }
@@ -167,7 +179,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:32+09:00",
+          "checked_at": "2026-09-24T16:53:12+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -178,7 +190,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:34+09:00",
+          "checked_at": "2026-09-24T16:53:15+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -214,7 +226,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:36+09:00",
+          "checked_at": "2026-09-24T16:53:17+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -225,7 +237,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:38+09:00",
+          "checked_at": "2026-09-24T16:53:19+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
@@ -242,7 +254,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:40+09:00",
+          "checked_at": "2026-09-24T16:53:21+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -253,7 +265,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:42+09:00",
+          "checked_at": "2026-09-24T16:53:24+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -264,7 +276,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:45+09:00",
+          "checked_at": "2026-09-24T16:53:26+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -275,7 +287,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-09-24T14:18:47+09:00",
+          "checked_at": "2026-09-24T16:53:29+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
