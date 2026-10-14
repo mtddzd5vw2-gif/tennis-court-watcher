@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-10-14T16:33:50+09:00",
+  "generated_at": "2026-10-14T19:53:30+09:00",
   "window": {
     "days": 15,
     "start": "08:00",
@@ -20,7 +20,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:19+09:00",
+          "checked_at": "2026-10-14T19:52:56+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-10-17&category_id=483&area_id=289",
           "availability": []
         },
@@ -31,7 +31,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:22+09:00",
+          "checked_at": "2026-10-14T19:52:59+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-10-18&category_id=483&area_id=289",
           "availability": []
         },
@@ -42,7 +42,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:26+09:00",
+          "checked_at": "2026-10-14T19:53:03+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-10-24&category_id=483&area_id=289",
           "availability": []
         },
@@ -53,7 +53,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:29+09:00",
+          "checked_at": "2026-10-14T19:53:06+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-10-25&category_id=483&area_id=289",
           "availability": []
         }
@@ -70,7 +70,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:32+09:00",
+          "checked_at": "2026-10-14T19:53:09+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -81,7 +81,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:35+09:00",
+          "checked_at": "2026-10-14T19:53:12+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -92,7 +92,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:37+09:00",
+          "checked_at": "2026-10-14T19:53:15+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -103,7 +103,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:39+09:00",
+          "checked_at": "2026-10-14T19:53:17+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -157,7 +157,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:41+09:00",
+          "checked_at": "2026-10-14T19:53:19+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -183,18 +183,6 @@
               "status": "available",
               "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
               "slot_id": "602b24f5be559b77302572cd"
-            },
-            {
-              "facility_id": "toukai-tennis",
-              "facility_name": "東開庭球場",
-              "date": "2026-10-17",
-              "court_name": "Bコート(ナイターなし)",
-              "start_time": "08:30",
-              "end_time": "11:00",
-              "duration_minutes": 150,
-              "status": "available",
-              "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-              "slot_id": "7173747c8d6a092254276b2c"
             },
             {
               "facility_id": "toukai-tennis",
@@ -241,7 +229,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:43+09:00",
+          "checked_at": "2026-10-14T19:53:21+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -252,7 +240,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:46+09:00",
+          "checked_at": "2026-10-14T19:53:24+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         },
@@ -263,7 +251,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-10-14T16:33:48+09:00",
+          "checked_at": "2026-10-14T19:53:27+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": []
         }
