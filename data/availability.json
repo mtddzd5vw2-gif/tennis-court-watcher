@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-11-10T08:13:40+09:00",
+  "generated_at": "2026-11-10T11:33:41+09:00",
   "window": {
     "days": 15,
     "start": "08:00",
@@ -20,7 +20,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-11-10T08:12:56+09:00",
+          "checked_at": "2026-11-10T11:33:24+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-11-14&category_id=483&area_id=289",
           "availability": [
             {
@@ -152,7 +152,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-11-10T08:13:00+09:00",
+          "checked_at": "2026-11-10T11:33:28+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-11-15&category_id=483&area_id=289",
           "availability": [
             {
@@ -188,7 +188,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-11-10T08:13:04+09:00",
+          "checked_at": "2026-11-10T11:33:31+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-11-21&category_id=483&area_id=289",
           "availability": []
         },
@@ -199,7 +199,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-11-10T08:13:07+09:00",
+          "checked_at": "2026-11-10T11:33:34+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-11-22&category_id=483&area_id=289",
           "availability": []
         },
@@ -210,7 +210,7 @@
           "status": "success",
           "error_type": null,
           "error_message": null,
-          "checked_at": "2026-11-10T08:13:11+09:00",
+          "checked_at": "2026-11-10T11:33:38+09:00",
           "reservation_url": "https://v2.spm-cloud.com/user/kamoike-undo/reserves/daily?date=2026-11-23&category_id=483&area_id=289",
           "availability": []
         }
@@ -224,56 +224,71 @@
           "date": "2026-11-14",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:14+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Access denied (HTTP 403)",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:14+09:00"
         },
         {
           "date": "2026-11-15",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:17+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:17+09:00"
         },
         {
           "date": "2026-11-21",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:19+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:19+09:00"
         },
         {
           "date": "2026-11-22",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:22+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:22+09:00"
         },
         {
           "date": "2026-11-23",
           "day_type": "holiday",
           "holiday_name": "勤労感謝の日",
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:24+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:24+09:00"
         }
       ]
     },
@@ -285,10 +300,10 @@
           "date": "2026-11-14",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:26+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -315,16 +330,19 @@
               "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
               "slot_id": "bf62704c6925a4e1c3585929"
             }
-          ]
+          ],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:26+09:00"
         },
         {
           "date": "2026-11-15",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:29+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -351,16 +369,19 @@
               "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
               "slot_id": "076ec770728900869a71c66d"
             }
-          ]
+          ],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:29+09:00"
         },
         {
           "date": "2026-11-21",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:32+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -387,27 +408,33 @@
               "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
               "slot_id": "9d52d57491973a2320723268"
             }
-          ]
+          ],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:32+09:00"
         },
         {
           "date": "2026-11-22",
           "day_type": "weekend",
           "holiday_name": null,
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:35+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
-          "availability": []
+          "availability": [],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:35+09:00"
         },
         {
           "date": "2026-11-23",
           "day_type": "holiday",
           "holiday_name": "勤労感謝の日",
-          "status": "success",
-          "error_type": null,
-          "error_message": null,
-          "checked_at": "2026-11-10T08:13:37+09:00",
+          "status": "error",
+          "error_type": "access_denied",
+          "error_message": "Skipped after P-Kashikan HTTP 403 earlier in this run",
+          "checked_at": "2026-11-10T11:33:41+09:00",
           "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
           "availability": [
             {
@@ -422,7 +449,10 @@
               "reservation_url": "https://k2.p-kashikan.jp/kagoshima-city/index.php",
               "slot_id": "c2649328f6f5ecad2aa9f9c4"
             }
-          ]
+          ],
+          "http_status": 403,
+          "fallback_from_previous": true,
+          "last_success_checked_at": "2026-11-10T08:13:37+09:00"
         }
       ]
     }
